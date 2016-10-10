@@ -1,0 +1,80 @@
+Principles
+-decouple modules
+-swappable modules.  Implement an interface
+-no globals
+-try to minimize dependency on config service.  If config service is down, only config paths should be impacted.
+-In header files do forward declaration as much as possible, especially in infra folder.
+-We need to be hardware agnostic as much as possible.  Dependending datasphere configuration we may advice best practices, place restrictions.
+
+-On volume create, decide on which replicas will hold the volume
+-Volume config channel
+--Single publisher, multiple-subscriber.  One way flow from publisher to subscribers.
+--sequence id for config channel.  Can be same as # of entries pushed into the channel.
+--getCurrentVolumeConfig returns current volume config at current sequence id
+
+Ideas
+-Using kafka as a temp store for logging operations for a particular group when service is down
+
+Datamodel Hierarchy
+-Dataverse - Container for dataspheres
+-Datapshere - Sandbox for data for wit set of polcies around data managment including faults, storage, etc
+-Volume Ring - Provides volume durability
+-Pod ring - Provides data block durability
+
+Datasphere
+-Mutiple types of dataspheres.  Each datasphere is a unique combination of following params
+-Storage medium type (Flash only, mixed, disk only)
+-redundancy type (Repliation based or erasure coded based)
+
+Datom mangament
+Configuation
+-Static in nature.  Doesn't really depend on service running at the moment.  Uses distributed replicated db to store the configuration.
+Coordination
+-Dynamic in nature.  Leader election is one such item.  
+In the initial implementation configuation and coordination are provided by single zk cluster.  We should be able to separte these out reliability and availability reasons.  In implementation try and ensure failure in configuration service doesn't hinder us from doing coordinator.  It's important to have this seperation.
+
+Interaction between dataspheres
+semi-sync replication
+-For the first cut it's important to have semi sync replication between dataspheres.  Allows for non-disruptive upgrades.
+-replication can be between heterogeneous dataspheres.
+
+-Each datasphere has preset properties based on the type of datasphere.  Therese properties are define in json file and on datapshere creation loaded into configdb under tree path <datapshereid>/properties
+-Each dataspehere has static and dynamic properties.  Dynamic properties can have watches
+
+Garbage collection
+-Clones are instantaneous.  Until reference counting is done they remain read only
+
+zookeeper schema
+
+/dataom
+/dataom/spheres
+/dataom/spheres/sphere-1
+
+/dataom/spheres/sphere-1/nodes
+/dataom/spheres/sphere-1/nodes/node-1
+/dataom/spheres/sphere-1/nodes/node-2
+
+/dataom/spheres/sphere-1/volumerings
+/dataom/spheres/sphere-1/volumerings/vr1
+
+/dataom/spheres/sphere-1/podrings
+/dataom/spheres/sphere-1/podrings/pr1
+
+/dataom/spheres/sphere-1/services
+/dataom/spheres/sphere-1/services/node1-volumeservice
+/dataom/spheres/sphere-1/services/node1-podservice
+
+struct Node {
+	string id;  // unique within the sphere
+	vector<string> configuredServiceIds;
+}
+
+struct service {
+	string id;  			// unique within the sphere
+	string type;			// volume/data
+}
+
+Eventing
+-Update configdb. Send a notification.  Associate zk chage # with event #
+-There is a window between db update to event being sent, during which config
+ service can go down.  We don't handle it

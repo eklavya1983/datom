@@ -1,0 +1,1 @@
+Only one can leadership per term.  A follower will not get apply log entry rpc from two different leaders with same term.

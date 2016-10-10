@@ -1,0 +1,244 @@
+Zookeeper
+-sessions are maintained on server side.  When client is partitioned, client isn't notified of session expiration.  It's disconnected.  Once it connects back in, session is expired.
+
+FBThrift
+-thrift1 is used for generating thrift compatible client
+Cpp2Worker
+-Implements Acceptor which has callbacks around when a connection is created etc.
+-Manages bunch of cpp2 connections
+-Is associated with IOThreadPoolExecutor thread. Cpp2Worker uses thread handle event base.
+
+Cpp2Connection
+-Connec
+
+ThriftServer
+-is capable of serving sync requests as well.  The generated code from fbthrift has support for sync calls as well as future based calls.  In essence it is one server that is configurable to work for sync and async workloads based on libevent and threadpool (for sync calls).
+-Io threadpool - Manages reading/writing from connetions
+-Cpp2Worker pool - pool of workers.  One worker per io thread in io threadpool.  Workers added in
+ ThreadPoolExecutor::Observer::threadStarted()
+-thread manager - For sync calls, stuff gets xferred from io threadpool to thread manager
+
+Accepting connetions
+-Acceptor::connectionReady
+-Cpp2Worker::onNewConnection
+
+Cpp2Worker creation
+#0  apache::thrift::ThriftAcceptorFactory::newAcceptor (this=this@entry=0x8dc008,
+    eventBase=0x7fffe00009f0) at server/ThriftServer.cpp:92
+#1  0x00007ffff71a992b in folly::ServerWorkerPool::threadStarted (this=0x8dca48, h=0x8db250)
+    at wangle/bootstrap/ServerBootstrap.cpp:25
+#2  0x00007ffff71bd1d1 in folly::wangle::ThreadPoolExecutor::addObserver (this=<optimized out>,
+    o=...) at wangle/concurrent/ThreadPoolExecutor.cpp:183
+#3  0x00007ffff78c31db in folly::ServerBootstrap<folly::wangle::ChannelPipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >> >::group(std::shared_ptr<folly::wangle::IOThreadPoolExecutor>, std::shared_ptr<folly::wangle::IOThreadPoolExecutor>) (
+    this=this@entry=0x8d9148, accept_group=..., io_group=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/bootstrap/ServerBootstrap.h:144
+#4  0x00007ffff78b98d1 in apache::thrift::ThriftServer::setup (this=this@entry=0x8d90e0)
+    at server/ThriftServer.cpp:326
+#5  0x00007ffff78ba04e in apache::thrift::ThriftServer::serve (this=0x8d90e0)
+    at server/ThriftServer.cpp:369
+
+New connection bt
+#0  apache::thrift::Cpp2Worker::onNewConnection (this=0x7fffe00045d8, sock=..., addr=0x7fffee4f29d0,
+    nextProtocolName=..., tinfo=...) at server/Cpp2Worker.cpp:57
+#1  0x00007ffff6de952e in folly::Acceptor::connectionReady (this=this@entry=0x7fffe00045d8,
+    sock=..., clientAddr=..., nextProtocolName=..., tinfo=...) at wangle/acceptor/Acceptor.cpp:343
+#2  0x00007ffff6de9d5c in folly::Acceptor::processEstablishedConnection (this=0x7fffe00045d8,
+    fd=<optimized out>, clientAddr=..., acceptTime=..., tinfo=...)
+    at wangle/acceptor/Acceptor.cpp:328
+#3  0x00007ffff6dea0e8 in folly::Acceptor::onDoneAcceptingConnection (this=<optimized out>,
+    fd=<optimized out>, clientAddr=..., acceptTime=...) at wangle/acceptor/Acceptor.cpp:293
+#4  0x00007ffff6de8d6c in folly::Acceptor::connectionAccepted (this=0x7fffe00045d8, fd=40,
+    clientAddr=...) at wangle/acceptor/Acceptor.cpp:285
+#5  0x00007ffff6d6e39c in folly::AsyncServerSocket::RemoteAcceptor::messageAvailable(folly::AsyncServerSocket::QueueMessage&&) (this=0x7fffbc001cf0, msg=<optimized out>)
+    at io/async/AsyncServerSocket.cpp:94
+#6  0x00007ffff6d74915 in folly::NotificationQueue<folly::AsyncServerSocket::QueueMessage>::Consumer::consumeMessages (this=0x7fffbc001cf0, isDrain=false) at ./../folly/io/async/NotificationQueue.h:660
+#7  0x00007ffff3717f24 in event_base_loop () from /usr/lib/x86_64-linux-gnu/libevent-2.0.so.5
+#8  0x00007ffff6d89cd6 in folly::EventBase::loopBody (this=this@entry=0x7fffd4000b00,
+    flags=flags@entry=0) at io/async/EventBase.cpp:333
+#9  0x00007ffff6d89f77 in folly::EventBase::loop (this=this@entry=0x7fffd4000b00)
+    at io/async/EventBase.cpp:284
+#10 0x00007ffff6d8a7ba in folly::EventBase::loopForever (this=0x7fffd4000b00)
+    at io/async/EventBase.cpp:432
+#11 0x00007ffff6dfa2e9 in folly::wangle::IOThreadPoolExecutor::threadRun (this=0x7f8830, thread=...)
+
+Request received
+#0  apache::thrift::Cpp2Connection::requestReceived(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >&&) (this=0x7fffd4001970,
+    req=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x5602e6, DIE 0x5dd3a2>) at server/Cpp2Connection.cpp:253
+#1  0x00007ffff7959df2 in apache::thrift::HeaderServerChannel::__lambda54::operator() (
+    __closure=0x7fffee4f2690) at async/HeaderServerChannel.cpp:364
+#2  0x00007ffff795be92 in folly::try_and_catch<>::call_fn<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCallback
+::sample>)::__lambda54>(<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x7da82, DIE 0xdfdbd>) (this=0x7fffee4f26a0,
+    fn=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x7da82, DIE 0xdfdbd>)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:442
+#3  0x00007ffff795bd95 in folly::try_and_catch<std::exception>::call_fn<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageChannel
+::RecvCallback::sample>)::__lambda54&>(apache::thrift::HeaderServerChannel::__lambda54 &) (
+    this=0x7fffee4f26a0, fn=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:423
+#4  0x00007ffff795bba8 in folly::try_and_catch<std::exception>::try_and_catch<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageC
+hannel::RecvCallback::sample>)::__lambda54>(<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x7da82, DIE 0xd877b>) (
+    this=0x7fffee4f26a0,
+    fn=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x7da82, DIE 0xd877b>)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:399
+#5  0x00007ffff795a15b in apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCall
+back::sample, std::default_delete<apache::thrift::MessageChannel::RecvCallback::sample> >) (
+    this=0x7fffd4001b70,
+    buf=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x7da82, DIE 0xd0836>, sample=...) at async/HeaderServerChannel.cpp:365
+#6  0x00007ffff799a14f in apache::thrift::Cpp2Channel::read (this=0x7fffd4001d20,
+    ctx=0x7fffd4002110, q=...) at async/Cpp2Channel.cpp:179
+#7  0x00007ffff79aba86 in folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Channel, false>::read
+    (this=0x7fffd4002138, ctx=0x7fffd4002110, msg=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandler.h:168
+#8  0x00007ffff79ab714 in folly::wangle::ContextImpl<folly::wangle::ChannelPipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, folly::wangle::ChannelHandlerPtr<
+apache::thrift::Cpp2Channel, false> >, folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Channel, false> >::read (this=0x7fffd4002110, msg=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandlerContext.h:221
+---Type <return> to continue, or q <return> to quit---
+#9  0x00007ffff79aa2f4 in folly::wangle::ContextImpl<folly::wangle::ChannelPipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, apache::thrift::TAsyncTransportHa
+ndler, folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Channel, false> >, apache::thrift::TAsyncTransportHandler>::fireRead (this=0x7fffd4002188, msg=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandlerContext.h:152
+#10 0x00007ffff799f76b in apache::thrift::TAsyncTransportHandler::readDataAvailable (
+    this=0x7fffd40021b0, len=30) at ../../../thrift/lib/cpp2/async/TAsyncTransportHandler.h:117
+#11 0x00007ffff6d7c62c in folly::AsyncSocket::handleRead (this=0x7fffd4001788)
+    at io/async/AsyncSocket.cpp:1283
+#12 0x00007ffff6d7806a in folly::AsyncSocket::ioReady (this=0x7fffd4001788, events=2)
+    at io/async/AsyncSocket.cpp:1184
+#13 0x00007ffff3717f24 in event_base_loop () from /usr/lib/x86_64-linux-gnu/libevent-2.0.so.5
+#14 0x00007ffff6d89cd6 in folly::EventBase::loopBody (this=this@entry=0x7fffd4000b00,
+    flags=flags@entry=0) at io/async/EventBase.cpp:333
+#15 0x00007ffff6d89f77 in folly::EventBase::loop (this=this@entry=0x7fffd4000b00)
+
+
+Serialization notes:
+Serializtion
+ConfigApi_client.cpp: 	ConfigApiAsyncClient::registerService
+ConfigApi.tcc: 		ConfigApiAsyncClient::registerServiceT
+apache::thrift::BinaryProtocolWriter prot;
+folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
+prot->setOutput(&queue, bufSize);
+args.write(prot);
+this->channel_->sendRequest(rpcOptions, std::move(callback), std::move(ctx), queue.move());
+HeaderClientChannel::sendRequest()
+Cpp2Channel::sendMessage()
+FramingChannelHandler::addFrame()
+Pipeline::write();
+
+
+Deserialization
+ConfigApiAsyncProcessor::process()
+AsyncProcessor.h:
+ConfigApiAsyncProcessor::process_registerService
+GeneratedAsyncProcessor::deserializeRequest()
+deserilization codepath ex:
+ConfigApiAsyncProcessor::process_registerService() -> deserializeRequest(args, buf.get(), iprot.get(), c.get());
+
+Sending sync request error
+#0  apache::thrift::ClientSyncCallback::requestError(apache::thrift::ClientReceiveState&&) (this=0x7c39a0,
+    rs=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/build/src/infra/test/ServiceTest, CU 0x10e332, DIE 0x178643>)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/async/RequestChannel.h:311
+#1  0x00007ffff788a9bd in apache::thrift::HeaderClientChannel::TwowayCallback::messageSendError(folly::exception_wrapper&&) (this=0x7c3af0,
+    ex=ex@entry=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0x5c7e, DIE 0xbed40>)
+    at ../../../thrift/lib/cpp2/async/HeaderClientChannel.h:278
+#2  0x00007ffff78ad410 in apache::thrift::Cpp2Channel::sendMessage(apache::thrift::MessageChannel::SendCallback*, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >&&) (this=0x7be670,
+    callback=0x7c3af0, buf=<optimized out>) at async/Cpp2Channel.cpp:246
+#3  0x00007ffff7882005 in apache::thrift::HeaderClientChannel::sendRequest (this=0x7bebb0, rpcOptions=..., cb=..., ctx=..., buf=...) at async/HeaderClientChannel.cpp:445
+#4  0x000000000052e8c9 in infra::cpp2::ServiceApiAsyncClient::getModuleStateT<apache::thrift::CompactProtocolWriter> (this=0x7fffffffe0d0, prot=0x7fffffffde30, rpcOptions=..., callback=...,
+    arguments=...) at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.tcc:153
+#5  0x0000000000522193 in infra::cpp2::ServiceApiAsyncClient::getModuleState (this=0x7fffffffe0d0, rpcOptions=..., callback=..., arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi_client.cpp:39
+#6  0x0000000000522459 in infra::cpp2::ServiceApiAsyncClient::sync_getModuleState (this=0x7fffffffe0d0, rpcOptions=..., _return=..., arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi_client.cpp:62
+#7  0x0000000000522374 in infra::cpp2::ServiceApiAsyncClient::sync_getModuleState (this=0x7fffffffe0d0, _return=..., arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi_client.cpp:56
+#8  0x000000000050def3 in Service_init_Test::TestBody (this=0x7bc390) at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/test/ServiceTest.cpp:34
+#9  0x00007ffff6e7aa23 in HandleSehExceptionsInMethodIfSupported<testing::Test, void> (location=0x7ffff6e7e054 "the test body", method=<optimized out>, object=<optimized out>) at ./src/gtest.cc:2078
+#10 testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void> (object=object@entry=0x7bc390, method=<optimized out>, location=location@entry=0x7ffff6e7e054 "the test body")
+    at ./src/gtest.cc:2114
+
+Reading data off of socket by IO thread and handing the request off to thread manager
+#0  infra::cpp2::ServiceApiAsyncProcessor::_processInThread_getModuleState<apache::thrift::CompactProtocolReader, apache::thrift::CompactProtocolWriter> (this=0x7fffb8001ac0, req=..., buf=...,   [18/1726]
+    iprot=..., ctx=0x7fffb8007228, eb=0x7fffb8000ad0, tm=0x7fffe8008ef0)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.tcc:17
+#1  0x00000000005584c3 in infra::cpp2::ServiceApiAsyncProcessor::process (this=0x7fffb8001ac0,
+    req=..., buf=..., protType=apache::thrift::protocol::T_COMPACT_PROTOCOL, context=0x7fffb8007228,
+    eb=0x7fffb8000ad0, tm=0x7fffe8008ef0)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.cpp:219
+#2  0x00007ffff78e6569 in apache::thrift::Cpp2Connection::requestReceived(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >&&) (
+    this=0x7fffb8001940, req=<optimized out>) at server/Cpp2Connection.cpp:388
+#3  0x00007ffff788ee6e in operator() (__closure=<optimized out>) at async/HeaderServerChannel.cpp:364
+#4  call_fn<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCallback::sample>)::__lambda54> (
+    this=0x7fffed6e7760, fn=<optimized out>)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:442
+#5  call_fn<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCallback::sample>)::__lambda54&> (fn=...,
+    this=0x7fffed6e7760)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:423
+#6  try_and_catch<apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf>&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCallback::sample>)::__lambda54> (
+    fn=<optimized out>, this=0x7fffed6e7760)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/ExceptionWrapper.h:399
+#7  apache::thrift::HeaderServerChannel::messageReceived(std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >&&, std::unique_ptr<apache::thrift::MessageChannel::RecvCallback::sample, std::def
+ault_delete<apache::thrift::MessageChannel::RecvCallback::sample> >) (this=0x7fffb8001b40,
+    buf=<unknown type in /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/.libs/libthriftcpp2.so.24, CU 0xc9349, DIE 0x166d2c>, sample=...) at async/HeaderServerChannel.cpp:365
+#8  0x00007ffff78ae8a0 in apache::thrift::Cpp2Channel::read (this=0x7fffb8001cf0,
+    ctx=<optimized out>, q=...) at async/Cpp2Channel.cpp:179
+#9  0x00007ffff78b2202 in read (msg=..., ctx=<optimized out>, this=<optimized out>)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandler.h:168
+#10 folly::wangle::ContextImpl<folly::wangle::ChannelPipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Ch
+annel, false> >, folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Channel, false> >::read (
+    this=<optimized out>, msg=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandlerContext.h:221
+#11 0x00007ffff78b205a in folly::wangle::ContextImpl<folly::wangle::ChannelPipeline<folly::IOBufQueue&, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, apache::thrift::TAsyncTransportHa
+ndler, folly::wangle::ChannelHandlerPtr<apache::thrift::Cpp2Channel, false> >, apache::thrift::TAsyncT---Type <return> to continue, or q <return> to quit---
+ransportHandler>::fireRead (this=<optimized out>, msg=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/folly/folly/wangle/channel/ChannelHandlerContext.h:152
+#12 0x00007ffff78b4207 in apache::thrift::TAsyncTransportHandler::readDataAvailable (
+    this=0x7fffb8002180, len=39) at ../../../thrift/lib/cpp2/async/TAsyncTransportHandler.h:117
+#13 0x00007ffff716862c in folly::AsyncSocket::handleRead (this=0x7fffb8001728)
+    at io/async/AsyncSocket.cpp:1283
+#14 0x00007ffff716406a in folly::AsyncSocket::ioReady (this=0x7fffb8001728, events=2)
+    at io/async/AsyncSocket.cpp:1184
+#15 0x00007ffff38b2f24 in event_base_loop () from /usr/lib/x86_64-linux-gnu/libevent-2.0.so.5
+
+Thrift handler called on thread manager thread (not the io thread).  Note this is the backtrace no matter what the implementation.  The order is it will try asyn_tm_* followed by future_get*, followed by getModeState
+
+#0  infra::ServiceApiHandler::getModuleState (this=0x7ce478, _return=..., arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/Service.tcc:17
+#1  0x0000000000555542 in infra::cpp2::ServiceApiSvIf::future_getModuleState (this=0x7ce478,
+    arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.cpp:37
+#2  0x000000000055587c in infra::cpp2::ServiceApiSvIf::async_tm_getModuleState (this=0x7ce478,
+    callback=..., arguments=...)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.cpp:53
+#3  0x0000000000566f9b in infra::cpp2::ServiceApiAsyncProcessor::process_getModuleState<apache::thrift::CompactProtocolReader, apache::thrift::CompactProtocolWriter> (this=0x7fffb8001ac0, req=...,
+    buf=..., iprot=..., ctx=0x7fffb8007228, eb=0x7fffb8000ad0, tm=0x7fffe8008ef0)
+    at /home/nbayyana/playground/cpp/test_fbthrift/src/infra/gen/gen-cpp2/ServiceApi.tcc:58
+#4  0x000000000056793e in void apache::thrift::GeneratedAsyncProcessor::processInThread<apache::thrift::CompactProtocolReader, apache::thrift::CompactProtocolWriter, void (infra::cpp2::ServiceApiAsyncProc
+essor::*)(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, std:
+:unique_ptr<apache::thrift::CompactProtocolReader, std::default_delete<apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp2RequestContext*, folly::EventBase*, apache::thrift::concurrency::Thread
+Manager*), infra::cpp2::ServiceApiAsyncProcessor>(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >, std::unique_ptr<folly::IOBuf, s
+td::default_delete<folly::IOBuf> >, std::unique_ptr<apache::thrift::CompactProtocolReader, std::default_delete<apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp2RequestContext*, folly::EventBa
+se*, apache::thrift::concurrency::ThreadManager*, apache::thrift::concurrency::PRIORITY, bool, void (infra::cpp2::ServiceApiAsyncProcessor::*)(std::unique_ptr<apache::thrift::ResponseChannel::Request, std
+::default_delete<apache::thrift::ResponseChannel::Request> >, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, std::unique_ptr<apache::thrift::CompactProtocolReader, std::default_delete<
+apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp2RequestContext*, folly::EventBase*, apache::thrift::concurrency::ThreadManager*), infra::cpp2::ServiceApiAsyncProcessor*)::{lambda()#1}::opera
+tor()() (__closure=0x7fffb80074e0)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/async/AsyncProcessor.h:228
+#5  0x000000000057ab33 in std::_Function_handler<void (), void apache::thrift::GeneratedAsyncProcessor::processInThread<apache::thrift::CompactProtocolReader, apache::thrift::CompactProtocolWriter, void (
+infra::cpp2::ServiceApiAsyncProcessor::*)(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >, std::unique_ptr<folly::IOBuf, std::defa
+ult_delete<folly::IOBuf> >, std::unique_ptr<apache::thrift::CompactProtocolReader, std::default_delete<apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp2RequestContext*, folly::EventBase*, apa
+che::thrift::concurrency::ThreadManager*), infra::cpp2::ServiceApiAsyncProcessor>(std::unique_ptr<apache::thrift::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >,
+ std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, std::unique_ptr<apache::thrift::CompactProtocolReader, std::default_delete<apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp
+2RequestContext*, folly::EventBase*, apache::thrift::concurrency::ThreadManager*, apache::thrift::concurrency::PRIORITY, bool, void (infra::cpp2::ServiceApiAsyncProcessor::*)(std::unique_ptr<apache::thrif
+---Type <return> to continue, or q <return> to quit---j
+t::ResponseChannel::Request, std::default_delete<apache::thrift::ResponseChannel::Request> >, std::unique_ptr<folly::IOBuf, std::default_delete<folly::IOBuf> >, std::unique_ptr<apache::thrift::CompactProt
+ocolReader, std::default_delete<apache::thrift::CompactProtocolReader> >, apache::thrift::Cpp2RequestContext*, folly::EventBase*, apache::thrift::concurrency::ThreadManager*), infra::cpp2::ServiceApiAsync
+Processor*)::{lambda()#1}>::_M_invoke(std::_Any_data const&) (__functor=...)
+    at /usr/include/c++/4.8/functional:2071
+#6  0x000000000055f84a in std::function<void ()>::operator()() const (this=0x7fffb8007488)
+    at /usr/include/c++/4.8/functional:2464
+#7  0x000000000055d7e8 in apache::thrift::EventTask::run (this=0x7fffb8007480)
+    at /home/nbayyana/playground/cpp/test_fbthrift/fbthrift/thrift/lib/cpp2/async/AsyncProcessor.h:59
+#8  0x00007ffff78973f2 in apache::thrift::concurrency::ThreadManager::Task::run (this=0x7fffb8007540)
+    at ../../../thrift/lib/cpp/concurrency/ThreadManager-impl.h:57
+#9  0x00007ffff789ba80 in apache::thrift::concurrency::ThreadManager::ImplT<folly::LifoSemImpl<std::atomic, folly::Baton<std::atomic> > >::Worker<folly::LifoSemImpl<std::atomic, folly::Baton<std::atomic>
+> >::run (this=0x7fffe8005c78) at ../../../thrift/lib/cpp/concurrency/ThreadManager.tcc:123
+#10 0x00007ffff7921227 in apache::thrift::concurrency::NumaRunnable::run (this=0x7fffe8005cb8)
+
+cpp2server.cpp
+-has information about parameterizing thrift server

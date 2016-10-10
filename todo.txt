@@ -1,0 +1,57 @@
+Now
+-Test create volume
+-Test publishing volume info
+-Create volume server class
+--Pull volume table (part of PBVolumeConfigurator)
+--Reacts to notifications from pbvolume channel
+
+Infrastructure
+-Clean up log statements in zkadpater
+-DataomException class that takes in status
+-Status to error string
+
+Service
+-Pull service map
+-Bring up other services
+-Register and process events up to our current point
+-Publish service up message
+
+Configservice
+-Zookeeper in memory testing
+-Test zookeeper config service
+-Code up setup config param
+-Code up list spheres
+-Code up add node
+-Code up add service
+
+CMake
+-include java compilation
+-Organize where stuff gets installed.  Create lib and binary folders
+-Generate youcompleteme flags
+
+Epics
+-Authentication webserver, zookeeper
+
+Done
+-code up status codes in thrift
+-Code zookeeper put,get and unit test
+-Create Log macro called CLog (context log)
+-Try out few examples of using futures
+-Look into kafka c++ client
+
+MS1
+-add nodes
+-provision groups
+
+MS2
+-Failure handling
+--Group member down
+--service down
+--coordination service down
+
+
+Coding guidelines
+-Minmize usage of locks.  Use thread based synchronization provided by actor model
+-Not much code in constructor. Just assign memeber variables.  Do all initialization code in
+ init() method
+-User CLog macro for logging.  This wrapper macro on glog macro logs context as well.  Useful in in unit tests that run multiple services in the same addressspace.
