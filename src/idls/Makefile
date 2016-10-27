@@ -1,10 +1,9 @@
-TOPDIR=/home/nbayyana/playground/cpp/test_fbthrift
-THRIFT=$(TOPDIR)/thrift-0.9.3/compiler/cpp/thrift
+TOPDIR=/home/datom
+THRIFT=$(TOPDIR)/artifacts/bin/thrift1
 FBTHRIFT_CPP=$(TOPDIR)/artifacts/bin/thrift1
-FBTHRIFT_CPP2_GEN_PATH = $(TOPDIR)/artifacts/bin
-FBTHRIFT_CPP2=PYTHONPATH=$(FBTHRIFT_CPP2_GEN_PATH) python -mthrift_compiler.main --gen cpp2:process_in_event_base,namespace_cpp
+FBTHRIFT_CPP2_GEN_PATH = $(TOPDIR)/artifacts/lib/python2.7/dist-packages
+FBTHRIFT_CPP2=LD_LIBRARY_PATH=$(TOPDIR)/artifacts/lib PYTHONPATH=$(FBTHRIFT_CPP2_GEN_PATH) python -mthrift_compiler.main --gen cpp2:process_in_event_base,namespace_cpp
 
-#PYTHONPATH=$(FBTHRIFT_CPP2_GEN_PATH) python -mthrift_compiler.main --gen cpp2:json -o $(TOPDIR)/src/infra/gen service.thrift
 all: infra infra-python
 
 infra: commontypes.thrift status.thrift configtree.thrift service.thrift
@@ -13,8 +12,6 @@ infra: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen configtree.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen configapi.thrift
-	#$(FBTHRIFT_CPP) --gen cpp -out $(TOPDIR)/src/infra/gen service.thrift
-	#PYTHONPATH=$(FBTHRIFT_CPP2_GEN_PATH) python -mthrift_compiler.main --gen cpp2:process_in_event_base,json -o $(TOPDIR)/src/infra/gen configapi.thrift
 
 infra-python: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen commontypes.thrift

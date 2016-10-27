@@ -10,14 +10,18 @@ while [ -h "$SOURCE" ]; do
 done
 TOOLSDIR="$(cd -P "$( dirname "${SOURCE}" )" && pwd )"
 SOURCEDIR="$( cd ${TOOLSDIR}/.. && pwd)"
-KAFKADIR="$( cd ${SOURCEDIR}/../kafka_2.11-0.10.0.0 && pwd )"
-ZKDIR="$( cd ${SOURCEDIR}/../zookeeper-3.4.9 && pwd )"
+ARTIFACTSDIR="$( cd ${SOURCEDIR}/../artifacts && pwd)"
+KAFKADIR="$( cd ${ARTIFACTSDIR}/kafka_2.11-0.10.1.0 && pwd )"
+ZKDIR="$( cd ${ARTIFACTSDIR}/zookeeper-3.4.9 && pwd )"
 printf "srcdir: $SOURCEDIR\n"
 printf "toolsdir: $TOOLSDIR\n"
+printf "artifacts: $ARTIFACTSDIR\n"
 printf "kafkadir: $KAFKADIR\n"
+printf "zkdir: $ZKDIR\n"
 
 # includes
 source ${TOOLSDIR}/utils.sh
+
 
 
 # Compile source code and install artifacts in src/../build folder

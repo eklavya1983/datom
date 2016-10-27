@@ -1,4 +1,4 @@
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 #include <infra/ZooKafkaClient.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>

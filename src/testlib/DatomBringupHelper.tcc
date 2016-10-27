@@ -1,7 +1,7 @@
 #pragma once
 
 #include <exception>
-#include <zookeeper.h>
+#include <zookeeper/zookeeper.h>
 #include <testlib/DatomBringupHelper.h>
 #include <folly/futures/Future.h>
 #include <folly/Format.h>
