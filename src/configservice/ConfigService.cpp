@@ -13,6 +13,7 @@
 #include <infra/gen/gen-cpp2/status_types.h>
 #include <infra/LockHelper.tcc>
 #include <infra/gen/gen-cpp2/ConfigApi.h>
+#include <infra/LockHelper.tcc>
 
 #include <folly/io/async/EventBase.h>
 #include <wangle/concurrent/IOThreadPoolExecutor.h>
@@ -107,6 +108,28 @@ struct PBResourceSphereConfigMgr {
          });
     }
 
+    virtual folly::Future<std::vector<ResourceT>> getResources()
+    {
+        return via(eb_).then([this]() {
+            std::vector<ResourceT> resources;
+            for (const auto &kv : resources_) {
+                resources.push_back(kv.second);
+            }
+            return resources;
+        });
+    }
+
+    virtual folly::Future<std::vector<RingInfo>> getRings()
+    {
+        return via(eb_).then([this]() {
+            std::vector<RingInfo> rings;
+            for (const auto &kv : rings_) {
+                rings.push_back(kv.second);
+            }
+            return rings;
+        });
+    }
+
  protected:
     virtual VoidFuture addRing_(const RingInfo &ring)
     {
@@ -164,7 +187,19 @@ struct PBResourceSphereConfigMgr {
     std::string                                 resourcesTopic_;
 };
 
-using PBVolumeConfigMgr = PBResourceSphereConfigMgr<ConfigService, VolumeInfo>;
+struct PBVolumeConfigMgr : PBResourceSphereConfigMgr<ConfigService, VolumeInfo>
+{
+    using PBResourceSphereConfigMgr<ConfigService, VolumeInfo>::PBResourceSphereConfigMgr;
+
+    void throwOnPreAddResourceCheckFailures_(const VolumeInfo &info) override
+    {
+       for (const auto &kv : resources_) {
+           if (kv.second.name == info.name) {
+               throw MessageException(Status::STATUS_DUPLICATE_VOLUME, "duplicate volume name");
+           }
+       }
+    }
+};
 
 struct DatasphereConfigMgr {
     DatasphereConfigMgr(ConfigService *parent, const DataSphereInfo &info)
@@ -226,6 +261,28 @@ struct DatasphereConfigMgr {
         return f.get();
     }
 
+    std::vector<infra::ServiceInfo> getServices()
+    {
+        std::vector<infra::ServiceInfo> ret;
+        SharedLock<folly::SharedMutex> l(serviceCacheMutex_);
+        for (const auto &kv : serviceCache_) {
+            ret.push_back(kv.second);
+        }
+        return ret;
+    }
+
+    std::vector<infra::VolumeInfo> getVolumes()
+    {
+        auto f = volumesConfigMgr_->getResources();
+        return f.get();
+    }
+
+    std::vector<infra::RingInfo> getVolumeRings()
+    {
+        auto f = volumesConfigMgr_->getRings();
+        return f.get();
+    }
+
  protected:
     ConfigService                                   *parent_;
     DataSphereInfo                                  datasphereInfo_;
@@ -241,6 +298,10 @@ struct ConfigApiHandler : ConfigApiSvIf {
     {
         parent_ = parent;
     }
+    void addDatasphere(std::unique_ptr< ::infra::DataSphereInfo> info) override
+    {
+        parent_->addDataSphere(*info);
+    }
     void addService(std::unique_ptr< ::infra::ServiceInfo> info) override
     {
         parent_->addService(*info);
@@ -248,6 +309,21 @@ struct ConfigApiHandler : ConfigApiSvIf {
     void addVolume(std::unique_ptr< ::infra::VolumeInfo> info) override
     {
         parent_->addVolume(*info);
+    }
+    void listServices(std::vector< ::infra::ServiceInfo>& _return,
+                      std::unique_ptr<std::string> datasphere)
+    {
+        _return = parent_->listServices(*datasphere);
+    }
+    void listVolumes(std::vector< ::infra::VolumeInfo>& _return,
+                     std::unique_ptr<std::string> datasphere)
+    {
+        _return = parent_->listVolumes(*datasphere);
+    }
+    void listVolumeRings(std::vector< ::infra::RingInfo>& _return,
+                         std::unique_ptr<std::string> datasphere)
+    {
+        _return = parent_->listVolumeRings(*datasphere);
     }
 
  protected:
@@ -358,6 +434,27 @@ VolumeInfo ConfigService::addVolume(const VolumeInfo &info)
 {
     auto itr = getDatasphereOrThrow_(info.datasphereId);
     return itr->second->addVolume(info);
+}
+
+std::vector<infra::ServiceInfo>
+ConfigService::listServices(const std::string &datasphereId)
+{
+    auto itr = getDatasphereOrThrow_(datasphereId);    
+    return itr->second->getServices();
+}
+
+std::vector<infra::VolumeInfo>
+ConfigService::listVolumes(const std::string &datasphereId)
+{
+    auto itr = getDatasphereOrThrow_(datasphereId);    
+    return itr->second->getVolumes();
+}
+
+std::vector<infra::RingInfo>
+ConfigService::listVolumeRings(const std::string& datasphereId)
+{
+    auto itr = getDatasphereOrThrow_(datasphereId);    
+    return itr->second->getVolumeRings();
 }
 
 void ConfigService::ensureDatasphereMembership_()

@@ -44,6 +44,7 @@ void ServiceServer::start() {
         serverThread_ = new apache::thrift::util::ScopedServerThread(server_);
     }
 #endif
+    CLog(INFO) << "Starting server at port:" << port_;
     // TODO(Rao): Configure the server
     // server_->setIOThreadPool(system_->getIOThreadPool());
     server_->setNWorkerThreads(2);

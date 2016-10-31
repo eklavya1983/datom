@@ -10,10 +10,12 @@ while [ -h "$SOURCE" ]; do
 done
 TOOLSDIR="$(cd -P "$( dirname "${SOURCE}" )" && pwd )"
 SOURCEDIR="$( cd ${TOOLSDIR}/.. && pwd)"
+BUILDDIR="$( cd ${SOURCEDIR}/../build && pwd)"
 ARTIFACTSDIR="$( cd ${SOURCEDIR}/../artifacts && pwd)"
 KAFKADIR="$( cd ${ARTIFACTSDIR}/kafka_2.11-0.10.1.0 && pwd )"
 ZKDIR="$( cd ${ARTIFACTSDIR}/zookeeper-3.4.9 && pwd )"
 printf "srcdir: $SOURCEDIR\n"
+printf "builddir: $BUILDDIR\n"
 printf "toolsdir: $TOOLSDIR\n"
 printf "artifacts: $ARTIFACTSDIR\n"
 printf "kafkadir: $KAFKADIR\n"
@@ -46,7 +48,7 @@ function clean {
 function idlgen {
     cd ${SOURCEDIR}/idls
     make clean
-    make infra
+    make all 
 }
 
 # buid source and install artifacts to /op/datom
@@ -105,6 +107,38 @@ function cleanstartdatom {
     startdatom
     sleep 1
     ${ZKDIR}/bin/zkCli.sh create /datom datom
+}
+
+function start {
+    local svc=$1
+
+    case $svc in
+    config)
+        $BUILDDIR/src/configservice/configservice &
+        ;;
+    *)
+        logwarn "Unknown service $svc"
+        exit 1
+        ;;
+    esac
+
+    loginfo "Started service $svc"
+}
+
+function stop {
+    local svc=$1
+
+    case $svc in
+    config)
+        pkill configservice
+        ;;
+    *)
+        logwarn "Unknown service $svc"
+        exit 1
+        ;;
+    esac
+
+    loginfo "stopped service $svc"
 }
 
 

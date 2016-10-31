@@ -44,6 +44,10 @@ struct ConfigService : Service {
      */
     VolumeInfo addVolume(const VolumeInfo &info);
 
+    std::vector<infra::ServiceInfo> listServices(const std::string &datasphereId);
+    std::vector<infra::VolumeInfo> listVolumes(const std::string &datasphereId);
+    std::vector<infra::RingInfo> listVolumeRings(const std::string& datasphere);
+
  protected:
     DatasphereConfigTable::iterator getDatasphereOrThrow_(const std::string &id);
     void ensureDatasphereMembership_() override;

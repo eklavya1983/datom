@@ -29,6 +29,8 @@ struct ServiceServer {
     virtual void start();
     virtual void stop();
 
+    const std::string& getLogContext() const { return logContext_; }
+
  protected:
     std::string                                             logContext_;
     std::string                                             ip_;

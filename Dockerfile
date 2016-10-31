@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -yq \
 
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-4.9
 
-RUN apt-get install libboost-all-dev
+RUN apt-get install -yq libboost-all-dev
 
 # Install Java. From https://github.com/dockerfile/java/blob/master/oracle-java8/Dockerfile
 RUN \
@@ -45,3 +45,8 @@ RUN \
   rm -rf /var/cache/oracle-jdk8-installer
 # Define commonly used JAVA_HOME variable
 ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
+
+RUN apt-get install python-pip
+RUN pip install future
+RUN pip install futures
+RUN pip install tabulate

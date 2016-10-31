@@ -13,8 +13,11 @@ int main() {
                                                      "localhost:2181/datom",
                                                      id);
     
+    auto serviceInfo = ServiceInfo();
+    serviceInfo.port = 9090;
+    serviceInfo.ip = "localhost";
     auto configService = std::make_shared<ConfigService>(id,
-                                                         ServiceInfo(),
+                                                         serviceInfo,
                                                          zkClient);
     configService->init();
 
