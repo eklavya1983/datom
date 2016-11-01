@@ -88,12 +88,8 @@ flags = [
 '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/../include/c++/v1',
 '-isystem',
 '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/gtest-1.7.0/include',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/src',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/src/actor/gen-cpp2',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/artifacts/include',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/zookeeper-3.4.9/src/c/include',
-'-I/home/nbayyana/playground/cpp/test_fbthrift/zookeeper-3.4.9/src/c/generated'
+'-Iartifacts/include',
+'-Isrc'
 ]
 
 

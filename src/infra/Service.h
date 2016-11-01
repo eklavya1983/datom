@@ -16,8 +16,15 @@ struct CoordinationClient;
 struct ConnectionCache;
 
 struct ServiceApiHandler : ServiceApiSvIf {
+    using KVBMessageHandler = std::function<std::unique_ptr<KVBinaryData> (std::unique_ptr<KVBinaryData>)>;
     void getModuleState(std::string& _return,
                         std::unique_ptr<std::map<std::string, std::string>> arguments) override;
+    folly::Future<std::unique_ptr<KVBinaryData>> future_handleKVBMessage(std::unique_ptr<KVBinaryData> message) override;
+
+    void registerKVBMessageHandler(const std::string &type, const KVBMessageHandler &handler);
+
+ protected:
+    std::unordered_map<std::string, KVBMessageHandler> kvbMessageHandlers_;
 };
 
 /**

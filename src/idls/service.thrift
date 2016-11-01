@@ -1,6 +1,8 @@
+include "commontypes.thrift"
+
 namespace cpp infra
-namespace java infra.gen
 
 service ServiceApi {
 	string getModuleState(1: map<string, string> arguments)
+	commontypes.KVBinaryData handleKVBMessage(1: commontypes.KVBinaryData message)
 }

@@ -46,7 +46,9 @@ RUN \
 # Define commonly used JAVA_HOME variable
 ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
 
-RUN apt-get install python-pip
+RUN apt-add-repository universe
+RUN apt-get update
+RUN apt-get install -yq python-pip
 RUN pip install future
 RUN pip install futures
 RUN pip install tabulate

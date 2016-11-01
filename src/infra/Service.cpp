@@ -18,6 +18,25 @@ void ServiceApiHandler::getModuleState(std::string& _return,
     LOG(INFO) << "returning hello";
 }
 
+folly::Future<std::unique_ptr<KVBinaryData>>
+ServiceApiHandler::future_handleKVBMessage(std::unique_ptr<KVBinaryData> message)
+{
+    auto type = getType(*message);
+    auto itr = kvbMessageHandlers_.find(type);
+    if (itr == kvbMessageHandlers_.end()) {
+        throw apache::thrift::TApplicationException(
+            folly::sformat("No handler registered for type:{}", type));
+    }
+    return itr->second(std::move(message));
+}
+
+
+void ServiceApiHandler::registerKVBMessageHandler(const std::string &type,
+                                                  const KVBMessageHandler &handler)
+{
+    kvbMessageHandlers_[type] = handler;
+}
+
 Service* Service::newDefaultService(const std::string &logContext,
                                     const ServiceInfo &info,
                                     const std::string &zkServers)

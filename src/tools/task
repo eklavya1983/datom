@@ -10,11 +10,13 @@ while [ -h "$SOURCE" ]; do
 done
 TOOLSDIR="$(cd -P "$( dirname "${SOURCE}" )" && pwd )"
 SOURCEDIR="$( cd ${TOOLSDIR}/.. && pwd)"
+TOPDIR="$( cd ${SOURCEDIR}/.. && pwd)"
 BUILDDIR="$( cd ${SOURCEDIR}/../build && pwd)"
 ARTIFACTSDIR="$( cd ${SOURCEDIR}/../artifacts && pwd)"
 KAFKADIR="$( cd ${ARTIFACTSDIR}/kafka_2.11-0.10.1.0 && pwd )"
 ZKDIR="$( cd ${ARTIFACTSDIR}/zookeeper-3.4.9 && pwd )"
 printf "srcdir: $SOURCEDIR\n"
+printf "topdir: $TOPDIR\n"
 printf "builddir: $BUILDDIR\n"
 printf "toolsdir: $TOOLSDIR\n"
 printf "artifacts: $ARTIFACTSDIR\n"
@@ -47,8 +49,8 @@ function clean {
 # In the idl folder run make to generate code
 function idlgen {
     cd ${SOURCEDIR}/idls
-    make clean
-    make all 
+    make TOPDIR=$TOPDIR clean
+    make TOPDIR=$TOPDIR all 
 }
 
 # buid source and install artifacts to /op/datom
@@ -139,6 +141,23 @@ function stop {
     esac
 
     loginfo "stopped service $svc"
+}
+
+function docker {
+    local cmd=$1
+
+    case $cmd in
+    run)
+        docker run -it -v $TOPDIR:/home/datom --name datomdev datom:dev /bin/bash
+        ;;
+    start)
+        docker start -ia datomdev
+        ;;
+    *)
+        logwarn "Unknown command $cmd"
+        exit 1
+        ;;
+    esac
 }
 
 
