@@ -8,8 +8,6 @@
 #include <thread>
 #include <infra/StatusException.h>
 
-DEFINE_string(zkdir, "~/playground/cpp/test_fbthrift/zookeeper-3.4.9", "zookeeper directory");
-
 struct ZKHelper {
     ZKHelper()
     {
@@ -18,19 +16,18 @@ struct ZKHelper {
     }
     ~ZKHelper()
     {
-        stop();
+        cleanstop();
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     void start() {
-        auto cmd = folly::sformat("{}/bin/zkServer.sh start", FLAGS_zkdir);
+        auto cmd = folly::sformat("task startzk");
         int ret = std::system(cmd.c_str());
         ASSERT_TRUE(ret == 0);
     }
-    void stop() {
-        auto cmd = folly::sformat("{}/bin/zkServer.sh stop", FLAGS_zkdir);
+    void cleanstop() {
+        auto cmd = folly::sformat("task cleanstopzk");
         int ret = std::system(cmd.c_str());
         ASSERT_TRUE(ret == 0);
-        std::system("rm -rf /tmp/zookeeper/*");
     }
 };
 
@@ -79,6 +76,20 @@ TEST(ZooKafkaClient, basic_ops)
     itr = std::find_if(children.begin(), children.end(),
                        [](const infra::KVBinaryData &kvb) { return getId(kvb) == "service2";});
     ASSERT_TRUE(itr != children.end());
+
+    /* Create children with watch test */
+    int childWatchCntr = 0;
+    auto watchFn = [&childWatchCntr](const std::string &path) {
+        childWatchCntr++;
+    };
+    auto getChildrenRes  = client.getChildrenSimple("/services", watchFn);
+    getChildrenRes.wait();
+    ASSERT_EQ(getChildrenRes.get().size(), 2ull);
+    ASSERT_EQ(childWatchCntr, 0);
+    res = client.create("/services/service3", "service3data");
+    res.wait();
+    ASSERT_FALSE(res.getTry().hasException());
+    ASSERT_EQ(childWatchCntr, 1);
 
 
     /* createIncludingAncestors test */

@@ -58,6 +58,10 @@ struct SetCtx {
     std::string key;
 };
 
+struct WatchCtx {
+    CoordinationClient::WatchCb cb;
+};
+
 static void stringVectorCompletionCb(int rc,
                                      const String_vector *strings,
                                      const void *data)
@@ -122,7 +126,7 @@ static void statCompletionCb(int rc, const struct Stat *stat, const void *data)
     delete ctx;
 }
 
-void ZooKafkaClient::watcherFn(zhandle_t *zh,
+void ZooKafkaClient::watcherFnGlobal(zhandle_t *zh,
                                 int type,
                                 int state,
                                 const char *path,
@@ -131,11 +135,22 @@ void ZooKafkaClient::watcherFn(zhandle_t *zh,
     static_cast<ZooKafkaClient*>(watcherCtx)->watcher(type, state, path);
 }
 
+void ZooKafkaClient::watcherFn(zhandle_t *zh,
+                                int type,
+                                int state,
+                                const char *path,
+                                void *watcherCtx)
+{
+    auto *ctx = static_cast<WatchCtx*>(watcherCtx);
+    ctx->cb(path);
+    delete ctx;
+}
+
 
 
 ZooKafkaClient::ZooKafkaClient(const std::string &logContext,
-                                 const std::string& servers,
-                                 const std::string &consumerGroupId)
+                               const std::string& servers,
+                               const std::string &consumerGroupId)
     : logContext_(logContext),
     servers_(servers)
 {
@@ -161,7 +176,7 @@ ZooKafkaClient::~ZooKafkaClient()
 void ZooKafkaClient::init()
 {
     while (true) {
-        zh_ = zookeeper_init(servers_.c_str(), &ZooKafkaClient::watcherFn, 30000, 0, this, 0);
+        zh_ = zookeeper_init(servers_.c_str(), &ZooKafkaClient::watcherFnGlobal, 30000, 0, this, 0);
         if (zh_ == nullptr) {
             CLog(FATAL) << "Failed to initialize zookeeper instance";
             throw toStatusException(ZINVALIDSTATE );
@@ -250,20 +265,27 @@ std::string ZooKafkaClient::stateToStr(int state)
     return "INVALID_STATE";
 }
 
-folly::Future<std::string> ZooKafkaClient::create(const std::string &key,
-                                                  const std::string &value)
+folly::Future<std::string> ZooKafkaClient::createCommon_(const std::string &key,
+                                                         const std::string &value,
+                                                         int flags)
 {
     CreateCtx *ctx = new CreateCtx();
     ctx->key = key;
     auto future = ctx->promise.getFuture();
     auto rc = zoo_acreate(zh_, key.c_str(), value.c_str(), value.length(),
-                              &ZOO_OPEN_ACL_UNSAFE, 0, &stringCompletionCb, ctx);
+                              &ZOO_OPEN_ACL_UNSAFE, flags, &stringCompletionCb, ctx);
     if (rc != ZOK) {
         CLog(WARNING) << "failed to put key: " << key << " error: " << zerror(rc);
         delete ctx;
         return folly::makeFuture<std::string>(toStatusException(rc));
     }
     return future;
+}
+
+folly::Future<std::string> ZooKafkaClient::create(const std::string &key,
+                                                  const std::string &value)
+{
+    return createCommon_(key, value, 0);
 }
 
 folly::Future<std::string> ZooKafkaClient::createIncludingAncestors(const std::string &key,
@@ -294,6 +316,17 @@ folly::Future<std::string> ZooKafkaClient::createIncludingAncestors(const std::s
         });
     }
     return f;
+}
+
+folly::Future<std::string> ZooKafkaClient::createEphemeral(const std::string &key,
+                                                           const std::string &value,
+                                                           bool sequential)
+{
+    if (sequential) {
+        return createCommon_(key, value, ZOO_EPHEMERAL|ZOO_SEQUENCE);
+    } else {
+        return createCommon_(key, value, ZOO_EPHEMERAL);
+    }
 }
 
 folly::Future<int64_t> ZooKafkaClient::set(const std::string &key,
@@ -329,13 +362,24 @@ folly::Future<KVBinaryData> ZooKafkaClient::get(const std::string &key)
 }
 
 folly::Future<std::vector<std::string>>
-ZooKafkaClient::getChildrenSimple(const std::string &key)
+ZooKafkaClient::getChildrenSimple(const std::string &key,
+                                  const WatchCb &watchCb)
 {
+    int rc = ZOK;
     GetChildrenSimpleCtx *ctx = new GetChildrenSimpleCtx();
     ctx->key = key;
     auto future = ctx->promise.getFuture();
-    auto rc = zoo_awget_children(zh_, key.c_str(), nullptr, nullptr,
-                                 &stringVectorCompletionCb, ctx);
+
+
+    if (watchCb) {
+        auto watchCtx = new WatchCtx;
+        watchCtx->cb = watchCb;
+        rc = zoo_awget_children(zh_, key.c_str(), &ZooKafkaClient::watcherFn, watchCtx,
+                                &stringVectorCompletionCb, ctx);
+    } else {
+        rc = zoo_awget_children(zh_, key.c_str(), nullptr, nullptr,
+                                &stringVectorCompletionCb, ctx);
+    }
     if (rc != ZOK) {
         CLog(WARNING) << "failed to get children key: " << key << " error: " << zerror(rc);
         delete ctx;

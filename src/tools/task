@@ -60,6 +60,14 @@ function install {
     make && make install
 }
 
+function startzk {
+    ${KAFKADIR}/bin/zookeeper-server-start.sh -daemon ${KAFKADIR}/config/zookeeper.properties
+}
+
+function cleanstopzk {
+    cleanstopdatom
+}
+
 # clean zookeeper and kafka logs locally
 function cleandatom {
     rm -rf /tmp/zookeeper/*

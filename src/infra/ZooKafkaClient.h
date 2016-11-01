@@ -20,6 +20,11 @@ enum class Status;
 struct ZooKafkaClient : CoordinationClient {
     /* Maximum connection retries against zookeeper servers */
     const static int MAX_CONN_TRIES = 1;
+    static void watcherFnGlobal(zhandle_t *zh,
+                                int type,
+                                int state,
+                                const char *path,
+                                void *watcherCtx);
     static void watcherFn(zhandle_t *zh,
                           int type,
                           int state,
@@ -35,11 +40,16 @@ struct ZooKafkaClient : CoordinationClient {
                                       const std::string &value) override;
     folly::Future<std::string> createIncludingAncestors(const std::string &key,
                                                         const std::string &value) override;
+    folly::Future<std::string> createEphemeral(const std::string &key,
+                                               const std::string &value,
+                                               bool sequential = false) override;
     folly::Future<int64_t> set(const std::string &key,
                                const std::string &value,
                                const int &version) override;
     folly::Future<KVBinaryData> get(const std::string &key) override;
-    folly::Future<std::vector<std::string>> getChildrenSimple(const std::string &key);
+    folly::Future<std::vector<std::string>>
+        getChildrenSimple(const std::string &key,
+                          const WatchCb &watchCb=nullptr) override;
 #if 0
     folly::Future<std::vector<KVBinaryData>> getChildren(const std::string &key) override;
 #endif
@@ -63,6 +73,9 @@ struct ZooKafkaClient : CoordinationClient {
 
  protected:
     void blockUntilConnectedOrTimedOut_(int seconds);
+    folly::Future<std::string> createCommon_(const std::string &key,
+                                             const std::string &value,
+                                             int flags);
 
     std::string                                     logContext_;
     /* List of zookeeper servers */
