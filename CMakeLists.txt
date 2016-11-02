@@ -62,7 +62,7 @@ include_directories(${TOPDIR}/src)
 #link_directories(${FBTHRIFT_LIB_DIRS})
 
 add_subdirectory(src)
-#add_subdirectory(examples)
+add_subdirectory(examples)
 #add_subdirectory(config)
 
 
