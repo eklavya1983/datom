@@ -11,7 +11,7 @@ file(GLOB_RECURSE thrift_ext_sources "gen-ext/*.cpp")
 message("Thirft sources: ${thrift_cpp_sources}")
 
 # Library
-add_library(infra Service.cpp PropertiesCache.cpp ServiceServer.cpp ZooKafkaClient.cpp KafkaClient.cpp ConnectionCache.cpp ${thrift_ext_sources} ${thrift_cpp_sources})
+add_library(infra Service.cpp PropertiesCache.cpp ServiceServer.cpp ZooKafkaClient.cpp KafkaClient.cpp ConnectionCache.cpp PBMember.cpp ${thrift_ext_sources} ${thrift_cpp_sources})
 install (TARGETS infra DESTINATION lib)
 
 # Tests

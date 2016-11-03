@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
+#include <infra/InfraForwards.h>
 
 namespace folly {
 class EventBase;
@@ -12,6 +14,7 @@ namespace infra {
 
 struct CoordinationClient;
 struct PBMember;
+enum class Status;
 
 /**
  * @brief Base class for diffent roles PBMember can take
@@ -41,7 +44,7 @@ struct PBRole {
      * IO Msgs
      * Sync Msgs
      */
-    virtual void handleGroupWatchEvent(const std::vector<std::string>& children) = 0;
+    virtual void handleGroupWatchEvent(const std::vector<std::string>& children);
  protected:
     PBMember                    *parent_;
     RoleId                      roleId_;
@@ -98,9 +101,11 @@ struct PBMember {
          *       *                      |ZK event(No leader)            |FOLLOWER_WAIT_TO_JOIN_GROUP    |
          *       *                      |Election event with higher term|FOLLOWER_WAIT_TO_JOIN_GROUP    | increase term #
          */
+        FOLLOWER_BEGIN,
         FOLLOWER_WAIT_TO_JOIN_GROUP,
         FOLLOWER_SYNCING,
         FOLLOWER_FUNCTIONAL,
+        FOLLOWER_END,
 
         /* When there is no leader member takes on the role of
          * ELECTOR.  In this role we first take the group 
@@ -119,8 +124,11 @@ struct PBMember {
          * EC_WAITING_FOR_QUORUM        |quorum # of members            |EC_ELECTION_IN_PROGRESS        |send election message
          * EC_ELECTION_IN_PROGRESS      |respnsees recvd & leader found |FOLLOWER_WAIT_TO_JOIN_GROUP    |wait for leader to showup on a timer
          */
+        EC_BEGIN,
+        EC_ACQUIRE_LOCK,
         EC_WAITING_FOR_QUORUM,
         EC_ELECTION_IN_PROGRESS,
+        EC_END,
 
         /* On message to become leader for new term, we take on the LEADER role.
          * Depending upon avialable # of members we can start with either
@@ -137,10 +145,12 @@ struct PBMember {
          *                               or io event
          * LEADER_WAITING_FOR_QUORUM    |AddToGroupMsg && quorum met    |LEADER_FUNCTIONAL              |
          */
+        LEADER_BEGIN,
         LEADER_WAITING_FOR_QUORUM,
         LEADER_FUNCTIONAL,
-    }
-
+        LEADER_END
+    };
+#if 0
     void algo() {
         zk->registerWatch(GROUP_PATH, cb);
         zk->createNode(SEQUNETIAL|EPHEMERAL, myuuid);
@@ -216,29 +226,57 @@ struct PBMember {
     void handleGroupUpdateMsg_(const GroupUpdate &msg)
     {
     }
+#endif
 
     PBMember(folly::EventBase *eb,
              CoordinationClient *coordinationClient,
              const std::string &groupKey,
              const std::vector<std::string> &members,
-             const std::string &myId);
+             const std::string &myId,
+             const uint32_t &quorum);
     void init();
     bool amILeader();
 
+    /* Events to handle */
+    void handleGroupWatchEvent(const std::vector<std::string> &children);
+
+    inline const State& getState() const { return state_; }
+
     template<class T>
-    T* makeRole()
+    inline T* makeRole()
     {
         return new T(this);
     }
+    inline bool isFollowerState() const {
+        return state_ > FOLLOWER_BEGIN && state_ < FOLLOWER_END;
+    }
+    inline bool isElectorState() const {
+        return state_ > EC_BEGIN && state_ < EC_END;
+    }
+    inline bool isLeaderState() const {
+        return state_ > LEADER_BEGIN && state_ < LEADER_END;
+    }
 
  protected:
-    void switchRole_(PBRole *newRole, State state, const std::string &ctx);
+    void handleError_(const Status &status, const std::string &ctx);
+    void watchCb_(const std::string &key);
+    
+    void switchState_(State newState, const std::string &ctx);
+
+    std::map<uint64_t, std::string> parseMembers_(const std::vector<std::string> &children);
+    folly::Future<std::string> acquireElectorLock_();
+    void issueElectionRequest_();
+
+    bool hasLock_(const std::vector<std::string> &children);
+    bool canIBeElector_(const std::vector<std::string> &children);
+    bool hasQuorumMemberCount_(const std::vector<std::string> &children);
 
     folly::EventBase                    *eb_;
     CoordinationClient                  *coordinationClient_;
     std::string                         groupKey_;
     std::vector<std::string>            memberIds_;
     std::string                         myId_;
+    uint32_t                            quorum_;
     std::unique_ptr<PBRole>             role_;
     State                               state_ {UNINITIALIZED};
 };

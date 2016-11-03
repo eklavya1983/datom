@@ -118,6 +118,45 @@ TEST(ServiceTest, DISABLED_init)
     // testlib::waitForSIGINT();
 }
 
+class MySocket : public TAsyncSocket {
+ public:
+  typedef std::unique_ptr<MySocket, Destructor> UniquePtr;
+    MySocket(folly::EventBase* evb,
+        const std::string& ip,
+        uint16_t port,
+        uint32_t connectTimeout = 0)
+        : TAsyncSocket(evb, ip, port, connectTimeout)
+    {
+    }
+#if 0
+    using TAsyncSocket::TAsyncSocket;
+
+    static std::shared_ptr<MySocket> newSocket(
+        folly::EventBase* evb,
+        const std::string& ip,
+        uint16_t port,
+        uint32_t connectTimeout = 0) {
+        return std::shared_ptr<MySocket>(
+            new MySocket(evb, ip, port, connectTimeout),
+            folly::DelayedDestruction::Destructor());
+    }
+    void reconnect() {
+        eventBase_->runInEventBaseThread([this]() {
+            close();
+            init();
+            connect(nullptr, "127.0.0.1", 8082, 5000);
+        });
+    }
+    void doReconnect(TAsyncSocket &sock) {
+        sock.getEventBase()->runInEventBaseThread([this, &sock]() {
+            sock.close();
+            init();
+        });
+    }
+#endif
+    
+};
+
 TEST(Service, testserver)
 {
     infra::ServiceInfo info;
@@ -130,8 +169,14 @@ TEST(Service, testserver)
     std::this_thread::sleep_for(std::chrono::seconds(2));
 
     folly::EventBase base;
-    std::shared_ptr<TAsyncSocket> socket(
-        TAsyncSocket::newSocket(&base, "127.0.0.1", 8082));
+    auto interval = base.timer().getTickInterval();
+    interval++;
+    std::shared_ptr<MySocket> socket(new MySocket(&base, "127.0.0.1", 8082, 5000),
+                                     folly::DelayedDestruction::Destructor());
+        /*
+    std::shared_ptr<MySocket> socket(
+        MySocket::newSocket(&base, "127.0.0.1", 8082, 5000));
+        */
 
     infra::ServiceApiAsyncClient client(
         std::unique_ptr<HeaderClientChannel,
@@ -139,7 +184,7 @@ TEST(Service, testserver)
             new HeaderClientChannel(socket)));
 
     boost::polymorphic_downcast<HeaderClientChannel*>(
-        client.getChannel())->setTimeout(10000);
+        client.getChannel())->setTimeout(5000);
     std::string response;
     auto f = client.future_getModuleState({});
     base.loop();
@@ -147,8 +192,42 @@ TEST(Service, testserver)
 
     client.sync_getModuleState(response, {});
     EXPECT_EQ(response, "ok");
+    LOG(INFO) << "received responses from service1.  sock good?:" << socket->good();
 
     s->shutdown();
+    t.join();
+    delete s;
+    LOG(INFO) << "Killed service1  sock good?:" << socket->good();
+
+    for (int i = 0; i < 5; i++) {
+        LOG(INFO) << "future_getModuleState attempt: " << i << " sock good?:" << socket->good();
+        f = client.future_getModuleState({});
+        base.loop();
+        f.wait();
+        ASSERT_TRUE(f.hasException());
+    }
+
+    LOG(INFO) << "Spawn service2 sock good?:" << socket->good();
+    s = new Service("test", info, std::make_shared<ServiceApiHandler>(), nullptr);
+    s->init();
+    std::thread t2([s]() { s->run(); });
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+
+    // socket->reconnect();
+    // base.loop();
+
+    for (int i = 0; i < 5; i++) {
+        LOG(INFO) << "future_getModuleState attempt: " << i << " sock good?:" << socket->good();
+        f = client.future_getModuleState({});
+        base.loop();
+        if (f.hasException()) {
+            LOG(INFO) << "has excpetion: " << f.getTry().exception().what();
+        } else {
+            ASSERT_TRUE(f.get() ==  "ok");
+        }
+    }
+    s->shutdown();
+    t2.join();
 #if 0
     client.sync_getModuleState(response, {});
     EXPECT_EQ(response, "ok");
@@ -165,7 +244,6 @@ TEST(Service, testserver)
     ADD_FAILURE();
 #endif
 
-  t.join();
   delete s;
 }
 

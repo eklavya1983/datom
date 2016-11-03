@@ -11,6 +11,7 @@ infra: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen configtree.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen configapi.thrift
+	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen pbapi.thrift
 
 infra-python: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen commontypes.thrift
@@ -18,6 +19,7 @@ infra-python: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen configtree.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen service.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen configapi.thrift
+	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen pbapi.thrift
 
 infra-java: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP) --gen java -out $(TOPDIR)/src/java/src/main/java commontypes.thrift

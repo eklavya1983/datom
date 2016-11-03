@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -yq \
     curl \
     flex \
     gcc-4.9 \
+    gdb \
     git \
     gperf \
     g++-4.9 \
