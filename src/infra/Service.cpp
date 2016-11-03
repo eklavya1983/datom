@@ -1,4 +1,5 @@
 #include <util/Log.h>
+#include <wangle/concurrent/IOThreadPoolExecutor.h>
 #include <infra/ZooKafkaClient.h>
 #include <infra/Service.h>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
@@ -66,7 +67,7 @@ Service::Service(const std::string &logContext,
 
 Service::~Service()
 {
-    CLog(INFO) << "Exiting Service";
+    shutdown();
 }
 
 
@@ -102,14 +103,36 @@ void Service::init()
     }
 }
 
-void Service::run()
+void Service::run(bool async)
 {
-    server_->start();
+    CLog(INFO) << "Starting server mode:" << (async ? "own thread" : "main thread");
+    if (async) {
+        serverThread_.reset(new std::thread([this]() { server_->start(); }));
+    } else {
+        server_->start();
+    }
 }
 
 void Service::shutdown()
 {
-    server_->stop();
+    CLog(INFO) << "Shutting down service";
+    /* We destruct iothreadpool inorder to circumvent the restiction that object
+     * using event base be cleaned up on event base if even base is running.
+     * NOTE all eventbase based object require this, some such as AsyncSocket
+     * require it.
+     */
+    if (ioThreadpool_) {
+        ioThreadpool_.reset();
+    }
+
+    if (server_) {
+        server_->stop();
+        if (serverThread_) {
+            serverThread_->join();
+        }
+        server_.reset();
+        serverThread_.reset();
+    }
 }
 
 const std::string& Service::getServiceEntryKey() const
@@ -142,6 +165,11 @@ ConnectionCache* Service::getConnectionCache() const
     return connectionCache_.get();
 }
 
+folly::EventBase* Service::getEventBaseFromPool()
+{
+    return ioThreadpool_->getEventBase();
+}
+
 void Service::initCoordinationClient_()
 {
     /* Connect with zookeeper */
@@ -152,6 +180,11 @@ void Service::initCoordinationClient_()
 void Service::initServer_()
 {
     // TODO(Rao): Any sort of intiting
+}
+
+void Service::initIOThreadpool_(int nIOThreads)
+{
+    ioThreadpool_ = std::make_shared<wangle::IOThreadPoolExecutor>(nIOThreads);
 }
 
 void Service::ensureDatasphereMembership_()

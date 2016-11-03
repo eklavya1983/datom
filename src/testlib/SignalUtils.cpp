@@ -18,4 +18,10 @@ void waitForSIGINT() {
     }
 }
 
+void waitForKeyPress(const char *prompt)
+{
+    std::cout << prompt << "\n";
+    std::cin.get();
+}
+
 }  // namespace testlib

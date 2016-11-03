@@ -4,17 +4,27 @@ namespace folly {
 template <class T>
 class Future;
 struct Unit;
-struct EventBase;
+class EventBase;
 }
 
 namespace wangle {
-struct IOThreadPoolExecutor;
+class IOThreadPoolExecutor;
 }
+
+namespace apache { namespace thrift { namespace async {
+class TAsyncSocket;
+}}}
+
 
 namespace infra {
 enum class Status;
 using StatusFuture = folly::Future<Status>;
 using VoidFuture = folly::Future<folly::Unit>;
 struct CoordinationClient;
-struct ServiceInfo;
+struct ConnectionCache;
+class ServiceInfo;
+class KVBinaryData;
+
+namespace at = apache::thrift;
+namespace ata = apache::thrift::async;
 }

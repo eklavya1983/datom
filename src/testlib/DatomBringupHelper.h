@@ -35,6 +35,8 @@ struct DatomBringupHelper {
                                        int32_t numNodes);
     std::string getLogContext() const { return "DatomBringupHelper"; }
 
+    static infra::ServiceInfo generateVolumeServiceInfo(const std::string &datasphereId,
+                                                        int nodeIdx);
 
  protected:
     KafkaRunner                                     KafkaRunner_;

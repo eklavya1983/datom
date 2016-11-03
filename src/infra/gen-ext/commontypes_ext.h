@@ -2,10 +2,10 @@
 #include <ostream>
 
 namespace infra {
-struct ServiceInfo;
-struct RingInfo;
-struct DataSphereInfo;
-struct VolumeInfo;
+class ServiceInfo;
+class RingInfo;
+class DataSphereInfo;
+class VolumeInfo;
 
 std::ostream& operator << (std::ostream& out, const ServiceInfo &info);
 std::ostream& operator << (std::ostream& out, const RingInfo &info);

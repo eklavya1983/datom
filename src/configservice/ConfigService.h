@@ -23,7 +23,6 @@ struct ConfigService : Service {
     virtual ~ConfigService();
 
     void init() override;
-    folly::EventBase* getEventBaseFromPool() override;
 
     /* NOTE: Below methods don't do checks for existence.  It is intentional as
      * this code is just testing.  It is up to the user to ensure this isn't
@@ -55,7 +54,6 @@ struct ConfigService : Service {
     bool                                                        datomConfigured_ {false};
     folly::SharedMutex                                          datasphereMutex_;
     DatasphereConfigTable                                       datasphereTable_;
-    std::shared_ptr<wangle::IOThreadPoolExecutor>               ioThreadpool_;
 };
 
 }  // namespace config

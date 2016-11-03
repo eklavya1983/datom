@@ -12,7 +12,7 @@ KafkaRunner::KafkaRunner()
     if (FLAGS_toolsdir.empty()) {
         throw std::runtime_error("toolsdir flag isn't specified");
     }
-    taskScript_ = folly::sformat("{}/task.sh", FLAGS_toolsdir);
+    taskScript_ = folly::sformat("{}/task", FLAGS_toolsdir);
 
 }
 

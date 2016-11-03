@@ -92,8 +92,10 @@ void DatomBringupHelper<ConfigServiceT>::addService(const std::string &dataSpher
     configService_->addService(info);
 }
 
-static ServiceInfo generateVolumeServiceInfo(const std::string &datasphereId,
-                                      int nodeIdx) 
+template <class ConfigServiceT>
+ServiceInfo DatomBringupHelper<ConfigServiceT>::generateVolumeServiceInfo(
+    const std::string &datasphereId,
+    int nodeIdx) 
 {
     static int basePort = 2085;
     ServiceInfo serviceInfo;
@@ -101,7 +103,7 @@ static ServiceInfo generateVolumeServiceInfo(const std::string &datasphereId,
     serviceInfo.nodeId = folly::sformat("node{}", nodeIdx);
     serviceInfo.id = folly::sformat("service{}", nodeIdx);
     serviceInfo.type = ServiceType::VOLUME_SERVER;
-    serviceInfo.ip = "localhost";
+    serviceInfo.ip = "127.0.0.1";
     serviceInfo.port = basePort + nodeIdx*10;
     return serviceInfo;
 }

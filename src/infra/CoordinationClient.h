@@ -12,7 +12,7 @@ struct Unit;
 
 namespace infra {
 
-struct KVBinaryData;
+class KVBinaryData;
 enum class Status;
 
 

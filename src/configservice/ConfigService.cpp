@@ -16,7 +16,6 @@
 #include <infra/LockHelper.tcc>
 
 #include <folly/io/async/EventBase.h>
-#include <wangle/concurrent/IOThreadPoolExecutor.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
 
 namespace config {
@@ -349,8 +348,7 @@ void ConfigService::init()
 {
     serviceEntryKey_ = configtree_constants::CONFIGSERVICE_ROOT();
 
-    /* Init io threadpool */
-    ioThreadpool_ = std::make_shared<wangle::IOThreadPoolExecutor>(2);
+    initIOThreadpool_(2);
 
     initCoordinationClient_();
     /* Init connection cache, etc */
@@ -376,11 +374,6 @@ void ConfigService::init()
     /* Publish config service is up if datom is already configured */
     publishServiceInfomation_();
 
-}
-
-folly::EventBase* ConfigService::getEventBaseFromPool()
-{
-    return ioThreadpool_->getEventBase();
 }
 
 void ConfigService::createDatom()

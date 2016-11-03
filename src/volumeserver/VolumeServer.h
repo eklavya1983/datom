@@ -26,10 +26,8 @@ struct VolumeServer : Service {
     virtual ~VolumeServer() = default;
 
     void init() override;
-    folly::EventBase* getEventBaseFromPool() override;
 
  protected:
-    std::shared_ptr<wangle::IOThreadPoolExecutor>               ioThreadpool_;
     std::shared_ptr<VolumeReplicaMgr>                           replicaMgr_; 
 };
 

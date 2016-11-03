@@ -14,7 +14,6 @@
 #include <infra/LockHelper.tcc>
 
 #include <folly/io/async/EventBase.h>
-#include <wangle/concurrent/IOThreadPoolExecutor.h>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
 
@@ -156,14 +155,9 @@ struct PBResourceMgr {
 void VolumeServer::init()
 {
     Service::init();
-    ioThreadpool_ = std::make_shared<wangle::IOThreadPoolExecutor>(2);
+    Service::initIOThreadpool_(2);
     replicaMgr_ = std::make_shared<VolumeReplicaMgr>(this, "volumes");
     replicaMgr_->init();
-}
-
-folly::EventBase* VolumeServer::getEventBaseFromPool()
-{
-    return ioThreadpool_->getEventBase();
 }
 
 }  // namespace volumeserver 

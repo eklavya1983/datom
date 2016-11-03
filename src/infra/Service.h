@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <infra/InfraForwards.h>
 #include <infra/ModuleProvider.h>
 #include <infra/ServiceServer.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
@@ -11,9 +12,6 @@ class TNonblockingServer;
 }}}
 
 namespace infra {
-
-struct CoordinationClient;
-struct ConnectionCache;
 
 struct ServiceApiHandler : ServiceApiSvIf {
     using KVBMessageHandler = std::function<std::unique_ptr<KVBinaryData> (std::unique_ptr<KVBinaryData>)>;
@@ -41,7 +39,7 @@ struct Service : ModuleProvider {
     void operator=(Service const &) = delete;
 
     virtual void init();
-    virtual void run();
+    virtual void run(bool async=false);
     virtual void shutdown();
 
     const std::string& getServiceEntryKey() const;
@@ -49,7 +47,8 @@ struct Service : ModuleProvider {
     std::string getNodeId() const override;
     std::string getServiceId() const override;
     CoordinationClient* getCoordinationClient() const override;
-    ConnectionCache*    getConnectionCache() const override;
+    ConnectionCache* getConnectionCache() const override;
+    folly::EventBase* getEventBaseFromPool() override;
 
     inline const std::string& getLogContext() const {
         return logContext_;
@@ -60,20 +59,25 @@ struct Service : ModuleProvider {
                                       const std::string &zkServers);
 
  protected:
+    virtual void initIOThreadpool_(int nIOThreads);
     virtual void initCoordinationClient_();
     virtual void initServer_();
     virtual void ensureDatasphereMembership_();
     virtual void publishServiceInfomation_();
 
-    std::string                                 logContext_;
-    ServiceInfo                                 serviceInfo_;
-    std::string                                 serviceEntryKey_;
+    std::string                                     logContext_;
+    ServiceInfo                                     serviceInfo_;
+    std::string                                     serviceEntryKey_;
     /* client for coordination services */
-    std::shared_ptr<CoordinationClient>         coordinationClient_;
+    std::shared_ptr<CoordinationClient>             coordinationClient_;
     /* Connection cache */
-    std::shared_ptr<ConnectionCache>            connectionCache_;
+    std::shared_ptr<ConnectionCache>                connectionCache_;
+    /* Thread on which server will listen.  Only valid if async is set in run()*/
+    std::unique_ptr<std::thread>                    serverThread_;
     /* Server */
-    std::shared_ptr<ServiceServer>              server_;
+    std::shared_ptr<ServiceServer>                  server_;
+    /* IO threadpool */
+    std::shared_ptr<wangle::IOThreadPoolExecutor>   ioThreadpool_;
 
     friend struct ServiceApiHandler;
 };
