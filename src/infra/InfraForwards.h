@@ -11,9 +11,12 @@ namespace wangle {
 class IOThreadPoolExecutor;
 }
 
-namespace apache { namespace thrift { namespace async {
+namespace apache { namespace thrift {
+class HeaderClientChannel;
+namespace async {
 class TAsyncSocket;
-}}}
+}
+}}
 
 
 namespace infra {

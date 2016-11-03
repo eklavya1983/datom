@@ -9,6 +9,8 @@
 #define ALog(_logtype_)   LOG(_logtype_) << myId()
 #define AVLog(level)    VLOG(level) << myId()
 
+#define TLog LOG(INFO) << "====================>[TEST STEP] "
+
 /* Verbose logs */
 #define LMSG                1
 #define LCONFIG             2

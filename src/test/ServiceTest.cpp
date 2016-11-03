@@ -23,6 +23,10 @@ using namespace infra;
 using namespace config;
 using namespace volumeserver;
 
+#define SUBTEST(_subtest_, _lamda_) \
+    TLog << __subtest_; \
+    _lamda_();
+
 struct FakeService : Service
 {
     FakeService(const ServiceInfo &info)
@@ -48,14 +52,14 @@ TEST(ServiceTest, connection_up_down) {
     std::unique_ptr<Service> service1 (new FakeService(serviceInfo1));
     service1->init();
 
-    /* Try and send a message to service2 which isn't up yet.  It should fail */
+    TLog << "Try and send a message to service2 which isn't up yet.  It should fail";
     auto f = service1
         ->getConnectionCache()
         ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
     f.wait();
     ASSERT_TRUE(f.hasException());
 
-    /* Bring up service2 .  Send a message to service2 now and it should work */
+    TLog << "Bring up service2 .  Send a message to service2 now and it should work";
     auto serviceInfo2 = bringupHelper.generateVolumeServiceInfo("sphere1", 2);
     bringupHelper.getConfigService()->addService(serviceInfo2);
     std::unique_ptr<Service> service2 (new FakeService(serviceInfo2));
@@ -63,6 +67,22 @@ TEST(ServiceTest, connection_up_down) {
     service2->run(true /*async*/);
     sleep(2);
 
+    for (int i = 0; i < 2; i++) {
+        f = service1
+            ->getConnectionCache()
+            ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+        f.wait();
+        ASSERT_TRUE(!f.hasException());
+        auto svc2Client = f.get();
+        auto moduleStateFut = svc2Client->future_getModuleState({});
+        moduleStateFut.wait();
+        ASSERT_TRUE(service1->getConnectionCache()->\
+                    getHeaderClientChannelFromCache("service2").get() != nullptr);
+        ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
+    }
+
+    TLog << "Bring down service2.  Sending a message should fail";
+    service2.reset();
     f = service1
         ->getConnectionCache()
         ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
@@ -71,9 +91,28 @@ TEST(ServiceTest, connection_up_down) {
     auto svc2Client = f.get();
     auto moduleStateFut = svc2Client->future_getModuleState({});
     moduleStateFut.wait();
-    ASSERT_TRUE(service1->getConnectionCache()->getAsyncSocketFromCache("service2").get() != nullptr);
-    ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
-    /* Bring down service2.  Sending a message should fail */
+    ASSERT_TRUE(moduleStateFut.hasException());
+
+    TLog << "Bring up service2.  Sending a message should succeed";
+    service2.reset(new FakeService(serviceInfo2));
+    service2->init();
+    service2->run(true /*async*/);
+    sleep(2);
+
+    for (int i = 0; i < 2; i++) {
+        f = service1
+            ->getConnectionCache()
+            ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+        f.wait();
+        ASSERT_TRUE(!f.hasException());
+        auto svc2Client = f.get();
+        auto moduleStateFut = svc2Client->future_getModuleState({});
+        moduleStateFut.wait();
+        ASSERT_TRUE(service1->getConnectionCache()->\
+                    getHeaderClientChannelFromCache("service2").get() != nullptr);
+        ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
+    }
+
     testlib::waitForKeyPress();
     service1->shutdown();
     service2->shutdown();

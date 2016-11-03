@@ -13,13 +13,18 @@ struct ModuleProvider;
 struct ConnectionItem {
     ConnectionItem() = default;
     ConnectionItem(int64_t v,
-                   const std::shared_ptr<ata::TAsyncSocket> &s)
+                   const std::shared_ptr<at::HeaderClientChannel> &c)
         : version(v),
-        socket(s)
+        channel(c)
     {}
 
-    int64_t                             version{0};
-    std::shared_ptr<ata::TAsyncSocket>  socket;
+    int64_t                                     version{0};
+    /* We cache channel instead of socket because clients are constructed out of
+     * channels and when client goes out of scope, if channel refcount is zero,
+     * underneath transport is closed.  Since AsyncSocket and channel that is
+     * built on top of it is meant to be shared, we need to cache the channel
+     */
+    std::shared_ptr<at::HeaderClientChannel>    channel;
 };
 
 /**
@@ -35,10 +40,9 @@ struct ConnectionCache {
 
     std::string getConnectionId(const ServiceInfo& info);
 
-    folly::Future<std::shared_ptr<ata::TAsyncSocket>>
-        getAsyncSocket(const std::string &serviceId);
-
-    std::shared_ptr<ata::TAsyncSocket> getAsyncSocketFromCache(const std::string &serviceId);
+    folly::Future<std::shared_ptr<at::HeaderClientChannel>>
+        getHeaderClientChannel(const std::string &serviceId);
+    std::shared_ptr<at::HeaderClientChannel> getHeaderClientChannelFromCache(const std::string &serviceId);
 
     bool existsInCache(const std::string &serviceId);
 
@@ -51,7 +55,7 @@ struct ConnectionCache {
     ConnectionCache(const ConnectionCache&) = delete;
     ConnectionCache operator=(const ConnectionCache&) = delete;
 
-    std::shared_ptr<ata::TAsyncSocket>
+    std::shared_ptr<at::HeaderClientChannel>
         updateConnection_(const KVBinaryData &kvb, bool createIfMissing);
 #if 0
     void fetchMyDatasphereEntries_();

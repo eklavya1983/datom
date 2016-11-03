@@ -1,5 +1,6 @@
 #include <folly/futures/Future.h>
 #include <folly/Format.h>
+#include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
 #include <infra/gen/gen-cpp2/configtree_types.h>
@@ -47,14 +48,14 @@ std::string ConnectionCache::getConnectionId(const ServiceInfo& info)
     return folly::sformat("{}.{}", info.dataSphereId, info.id);
 }
 
-folly::Future<std::shared_ptr<apache::thrift::async::TAsyncSocket>>
-ConnectionCache::getAsyncSocket(const std::string &serviceId)
+folly::Future<std::shared_ptr<at::HeaderClientChannel>>
+ConnectionCache::getHeaderClientChannel(const std::string &serviceId)
 {
     {
         SharedLock<folly::SharedMutex> l(connectionsMutex_);
         auto itr = connections_.find(serviceId);
         if (itr != connections_.end()) {
-            return folly::makeFuture(itr->second.socket);
+            return folly::makeFuture(itr->second.channel);
         }
     }
 
@@ -70,13 +71,13 @@ ConnectionCache::getAsyncSocket(const std::string &serviceId)
               return updateConnection_(data, true);
         });
 }
-std::shared_ptr<ata::TAsyncSocket>
-ConnectionCache::getAsyncSocketFromCache(const std::string &serviceId)
+std::shared_ptr<at::HeaderClientChannel>
+ConnectionCache::getHeaderClientChannelFromCache(const std::string &serviceId)
 {
     SharedLock<folly::SharedMutex> l(connectionsMutex_);
     auto itr = connections_.find(serviceId);
     if (itr != connections_.end()) {
-        return itr->second.socket;
+        return itr->second.channel;
     } else {
         return nullptr;
     }
@@ -88,7 +89,24 @@ bool ConnectionCache::existsInCache(const std::string &serviceId)
     return connections_.find(serviceId) != connections_.end();
 }
 
-std::shared_ptr<apache::thrift::async::TAsyncSocket>
+#if 0
+/* This class ensure HeaderClientChannel create in updateConnection_
+ * is destroyed on eventbase.  This assumes that eventbase is running
+ * when HeaderClientChannel is being destroyed.  In typical use case
+ * that assumption is true.
+ */
+/* NOTE: This approach didn't work. I got a segfault I couldn't explain.  I
+ * didn't have the time to pursue more
+ */
+struct ChannelDestroyer {
+    void operator()(at::HeaderClientChannel *channel) const {
+        auto eb = channel->getEventBase();
+        eb->runInEventBaseThread([channel]() { /*channel->destroy();*/ });
+    }
+};
+#endif
+
+std::shared_ptr<at::HeaderClientChannel>
 ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing)
 {
     auto serviceInfo = deserializeThriftJsonData<ServiceInfo>(kvb, getLogContext());
@@ -101,10 +119,24 @@ ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing
      */
     if ((itr == connections_.end() && createIfMissing) ||
         (itr != connections_.end() && version > itr->second.version)) {
-        /* Done as below because AsyncSocket::init() needs to run in eventbase */
-        auto socket = std::make_shared<ata::TAsyncSocket>(nullptr);
-        auto eb = provider_->getEventBaseFromPool();
-        eb->runInEventBaseThread([this, eb, socket, serviceInfo]() {
+        folly::EventBase* eb = nullptr;
+        auto socket = ata::TAsyncSocket::newSocket(nullptr);
+        auto channel = std::shared_ptr<at::HeaderClientChannel>(
+            new at::HeaderClientChannel(socket), folly::DelayedDestruction::Destructor());
+        /* Close old channel */
+        if (itr != connections_.end()) {
+            auto oldChannel = itr->second.channel;
+            eb = oldChannel->getEventBase();
+            eb->runInEventBaseThread([this, serviceId = itr->first, conn = itr->second]() {
+                CLog(INFO) << "Closing old connection against service:" << serviceId
+                    << " version:" << conn.version;
+                conn.channel->closeNow();
+            });
+        } else {
+            eb = provider_->getEventBaseFromPool();
+        }
+        /* Init new channel.  AsyncSocket::init() needs to run in eventbase */
+        eb->runInEventBaseThread([this, eb, channel, socket, serviceInfo]() {
             socket->attachEventBase(eb);
             socket->connect(nullptr,
                             serviceInfo.ip,
@@ -115,8 +147,8 @@ ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing
         });
         CLog(INFO) << "Updated connection cache.  New version:" << version
             << serviceInfo;
-        connections_[serviceInfo.id] = ConnectionItem(version, socket);
-        return socket;
+        connections_[serviceInfo.id] = ConnectionItem(version, channel);
+        return channel;
     } else {
         CLog(INFO) << "Updated not applied existing version:"
             << ((itr == connections_.end()) ? -1 : itr->second.version)
@@ -125,7 +157,7 @@ ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing
         if (itr == connections_.end()) {
             return nullptr;
         }
-        return itr->second.socket;
+        return itr->second.channel;
     }
 }
 
