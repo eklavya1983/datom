@@ -29,6 +29,8 @@ struct ServiceServer {
     virtual void start();
     virtual void stop();
 
+    std::shared_ptr<ServerHandler> getHandler() const { return handler_; }
+
     const std::string& getLogContext() const { return logContext_; }
 
  protected:

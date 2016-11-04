@@ -16,6 +16,7 @@
 #include <infra/ZooKafkaClient.h>
 #include <configservice/ConfigService.h>
 #include <volumeserver/VolumeServer.h>
+#include <infra/gen-ext/KVBinaryData_ext.tcc>
 
 using namespace apache::thrift::async;
 using namespace apache::thrift;
@@ -51,10 +52,10 @@ TEST(ServiceTest, connection_up_down) {
     bringupHelper.getConfigService()->addService(serviceInfo1);
     std::unique_ptr<Service> service1 (new FakeService(serviceInfo1));
     service1->init();
+    auto connCache1 = service1->getConnectionCache();
 
     TLog << "Try and send a message to service2 which isn't up yet.  It should fail";
-    auto f = service1
-        ->getConnectionCache()
+    auto f = connCache1
         ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
     f.wait();
     ASSERT_TRUE(f.hasException());
@@ -68,23 +69,21 @@ TEST(ServiceTest, connection_up_down) {
     sleep(2);
 
     for (int i = 0; i < 2; i++) {
-        f = service1
-            ->getConnectionCache()
+        f = connCache1
             ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
         f.wait();
         ASSERT_TRUE(!f.hasException());
         auto svc2Client = f.get();
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
-        ASSERT_TRUE(service1->getConnectionCache()->\
+        ASSERT_TRUE(connCache1->\
                     getHeaderClientChannelFromCache("service2").get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 
     TLog << "Bring down service2.  Sending a message should fail";
     service2.reset();
-    f = service1
-        ->getConnectionCache()
+    f = connCache1
         ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
     f.wait();
     ASSERT_TRUE(!f.hasException());
@@ -100,19 +99,69 @@ TEST(ServiceTest, connection_up_down) {
     sleep(2);
 
     for (int i = 0; i < 2; i++) {
-        f = service1
-            ->getConnectionCache()
+        f = connCache1
             ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
         f.wait();
         ASSERT_TRUE(!f.hasException());
         auto svc2Client = f.get();
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
-        ASSERT_TRUE(service1->getConnectionCache()->\
+        ASSERT_TRUE(connCache1->\
                     getHeaderClientChannelFromCache("service2").get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 
+    TLog << "Two clients sending messages to same service simulataneously";
+    svc2Client = connCache1->\
+                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 get();
+    auto svc2Client2 = connCache1->\
+                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 get();
+    auto task = [](const std::shared_ptr<infra::ServiceApiAsyncClient> client) {
+        for (int i = 0; i < 100; i++) {
+            auto f = client->future_getModuleState({{"k1", "v1"}, {"k2", "v2"}});
+            f.wait();
+            ASSERT_TRUE(!f.hasException());
+        }
+    };
+    std::thread t1([=]() {
+        task(svc2Client);
+    });
+    std::thread t2([=]() {
+        task(svc2Client2);
+    });
+    t1.join();
+    t2.join();
+
+    TLog << "Test handling valid handleKVBMessage";
+    auto handler2 = service2->getHandler<ServiceApiHandler>();
+    handler2->registerKVBMessageHandler(
+        "PingMsg",
+        [](std::unique_ptr<KVBinaryData> kvb) {
+            std::string req = getProp<std::string>(*kvb, "request");
+            if (req == "ping") {
+                setProp<std::string>(*kvb, "response", "pong");
+            }
+            return folly::makeFuture(std::move(kvb));
+        });
+    svc2Client = connCache1->\
+                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 get();
+
+    KVBinaryData reqKvb;
+    setType(reqKvb, "PingMsg");
+    setProp(reqKvb, "request", "ping");
+    auto respF = svc2Client->future_handleKVBMessage(reqKvb);
+    auto respKvb = respF.get();
+    ASSERT_EQ(getProp<std::string>(respKvb, "response"), "pong");
+
+    TLog << "Test handling invallid handleKVBMessage";
+    setType(reqKvb, "InvalidType");
+    respF = svc2Client->future_handleKVBMessage(reqKvb);
+    respF.wait();
+    ASSERT_TRUE(respF.hasException());
+    
     testlib::waitForKeyPress();
     service1->shutdown();
     service2->shutdown();

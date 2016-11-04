@@ -89,23 +89,6 @@ bool ConnectionCache::existsInCache(const std::string &serviceId)
     return connections_.find(serviceId) != connections_.end();
 }
 
-#if 0
-/* This class ensure HeaderClientChannel create in updateConnection_
- * is destroyed on eventbase.  This assumes that eventbase is running
- * when HeaderClientChannel is being destroyed.  In typical use case
- * that assumption is true.
- */
-/* NOTE: This approach didn't work. I got a segfault I couldn't explain.  I
- * didn't have the time to pursue more
- */
-struct ChannelDestroyer {
-    void operator()(at::HeaderClientChannel *channel) const {
-        auto eb = channel->getEventBase();
-        eb->runInEventBaseThread([channel]() { /*channel->destroy();*/ });
-    }
-};
-#endif
-
 std::shared_ptr<at::HeaderClientChannel>
 ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing)
 {

@@ -14,7 +14,7 @@ class TNonblockingServer;
 namespace infra {
 
 struct ServiceApiHandler : ServiceApiSvIf {
-    using KVBMessageHandler = std::function<std::unique_ptr<KVBinaryData> (std::unique_ptr<KVBinaryData>)>;
+    using KVBMessageHandler = std::function<folly::Future<std::unique_ptr<KVBinaryData>> (std::unique_ptr<KVBinaryData>)>;
     void getModuleState(std::string& _return,
                         std::unique_ptr<std::map<std::string, std::string>> arguments) override;
     folly::Future<std::unique_ptr<KVBinaryData>> future_handleKVBMessage(std::unique_ptr<KVBinaryData> message) override;
@@ -49,6 +49,11 @@ struct Service : ModuleProvider {
     CoordinationClient* getCoordinationClient() const override;
     ConnectionCache* getConnectionCache() const override;
     folly::EventBase* getEventBaseFromPool() override;
+
+    template <class T>
+    std::shared_ptr<T> getHandler() const {
+        return std::dynamic_pointer_cast<T>(server_->getHandler());
+    }
 
     inline const std::string& getLogContext() const {
         return logContext_;

@@ -15,6 +15,7 @@ ServiceServer::ServiceServer(const std::string &logContext,
     logContext_ = logContext;
     ip_ = ip;
     port_ = port;
+    handler_ = handler;
 #if 0
     if (handler == nullptr) {
         handler = std::make_shared<cpp2::ServiceApiHandler>(new ServiceApiHandler());
@@ -22,7 +23,7 @@ ServiceServer::ServiceServer(const std::string &logContext,
 #endif
     server_.reset(new apache::thrift::ThriftServer("disabled", false));
     server_->setPort(port_);
-    server_->setInterface(handler);
+    server_->setInterface(handler_);
 }
 
 void ServiceServer::start() {

@@ -16,7 +16,6 @@ void ServiceApiHandler::getModuleState(std::string& _return,
                                        std::unique_ptr<std::map<std::string, std::string>> arguments)
 {
     _return = "ok";
-    LOG(INFO) << "returning hello";
 }
 
 folly::Future<std::unique_ptr<KVBinaryData>>
