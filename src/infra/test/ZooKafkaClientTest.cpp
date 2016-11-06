@@ -119,6 +119,17 @@ TEST(ZooKafkaClient, basic_ops)
     versionRes.wait();
     ASSERT_FALSE(versionRes.getTry().hasException());
     ASSERT_EQ(client.get("/datom4").get().data, "datom4");
+
+    /* delete test */
+    /* deleting existing key should succeed */
+    auto delRes = client.del("/datom4", -1);
+    delRes.wait();
+    ASSERT_FALSE(delRes.getTry().hasException());
+    /* get on deleted key should fail */
+    getResult = client.get("/datom4");
+    getResult.wait();
+    ASSERT_TRUE(getResult.getTry().hasException());
+
 }
 
 

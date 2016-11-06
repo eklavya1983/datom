@@ -58,6 +58,11 @@ struct SetCtx {
     std::string key;
 };
 
+struct DeleteCtx {
+    folly::Promise<folly::Unit> promise;
+    std::string key;
+};
+
 struct WatchCtx {
     CoordinationClient::WatchCb cb;
 };
@@ -122,6 +127,19 @@ static void statCompletionCb(int rc, const struct Stat *stat, const void *data)
         ctx->promise.setException(infra::toStatusException(rc));
     } else {
         ctx->promise.setValue(stat->version);
+    }
+    delete ctx;
+}
+
+void voidCompletionCb(int rc, const void *data)
+{
+    DeleteCtx *ctx = const_cast<DeleteCtx*>(reinterpret_cast<const DeleteCtx*>(data));
+
+    if (rc != ZOK) {
+        LOG(WARNING) << "voidCompletionCb key:" << ctx->key << " error:" << zerror(rc);
+        ctx->promise.setException(infra::toStatusException(rc));
+    } else {
+        ctx->promise.setValue();
     }
     delete ctx;
 }
@@ -342,6 +360,21 @@ folly::Future<int64_t> ZooKafkaClient::set(const std::string &key,
         CLog(WARNING) << "failed to set key: " << key << " error: " << zerror(rc);
         delete ctx;
         return folly::makeFuture<int64_t>(toStatusException(rc));
+    }
+    return future;
+}
+
+folly::Future<folly::Unit> ZooKafkaClient::del(const std::string &key,
+                                               const int &version)
+{
+    DeleteCtx *ctx = new DeleteCtx();
+    ctx->key = key;
+    auto future = ctx->promise.getFuture();
+    auto rc = zoo_adelete(zh_, key.c_str(), version, &voidCompletionCb, ctx);
+    if (rc != ZOK) {
+        CLog(WARNING) << "failed to delete key: " << key << " error: " << zerror(rc);
+        delete ctx;
+        return folly::makeFuture<folly::Unit>(toStatusException(rc));
     }
     return future;
 }

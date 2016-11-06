@@ -34,6 +34,9 @@ struct CoordinationClient {
     virtual folly::Future<int64_t> set(const std::string &key,
                                        const std::string &value,
                                        const int &version) = 0;
+
+    virtual folly::Future<folly::Unit> del(const std::string &key,
+                                           const int &version) = 0;
     
     virtual Status publishMessage(const std::string &topic,
                                   const std::string &message) = 0;

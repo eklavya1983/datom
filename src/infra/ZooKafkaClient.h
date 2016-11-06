@@ -46,6 +46,8 @@ struct ZooKafkaClient : CoordinationClient {
     folly::Future<int64_t> set(const std::string &key,
                                const std::string &value,
                                const int &version) override;
+    folly::Future<folly::Unit> del(const std::string &key,
+                                   const int &version) override;
     folly::Future<KVBinaryData> get(const std::string &key) override;
     folly::Future<std::vector<std::string>>
         getChildrenSimple(const std::string &key,
