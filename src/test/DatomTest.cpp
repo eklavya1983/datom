@@ -22,7 +22,7 @@ using namespace infra;
 using namespace config;
 using namespace volumeserver;
 
-TEST(Datom, DISABLED_pbcluster)
+TEST(Datom, pbcluster)
 {
     testlib::DatomBringupHelper<ConfigService> bringupHelper;
     testlib::ScopedDatom<ConfigService> d(bringupHelper);
@@ -78,6 +78,12 @@ TEST(Datom, DISABLED_pbcluster)
                                                            serviceInfo1.id));
     service1.init();
 #endif
+    std::cout << "Ready to publish\n";
+    std::string line;
+    while (std::cin >> line) {
+        configService->getCoordinationClient()->publishMessage("pbsphere.volumes", line);
+        std::cout << "Published " << line;
+    }
 
     testlib::waitForSIGINT();
 }

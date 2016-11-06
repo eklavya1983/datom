@@ -17,6 +17,7 @@
 #include <configservice/ConfigService.h>
 #include <volumeserver/VolumeServer.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen/gen-cpp2/service_types.tcc>
 
 using namespace apache::thrift::async;
 using namespace apache::thrift;
@@ -161,7 +162,20 @@ TEST(ServiceTest, connection_up_down) {
     respF = svc2Client->future_handleKVBMessage(reqKvb);
     respF.wait();
     ASSERT_TRUE(respF.hasException());
-    
+
+    TLog << "Test handling invallid handleKVBMessage";
+    handler2->registerKVBMessageHandler(
+        "PingMsg",
+        KVBThriftJsonHandler<PingMsg, PingRespMsg>(
+            [](std::unique_ptr<PingMsg> req) {
+                return folly::makeFuture(folly::make_unique<PingRespMsg>());
+            }));
+    setType(reqKvb, "PingMsg");
+    reqKvb.data = serializeToThriftJson<PingMsg>(PingMsg(), "");
+    respF = svc2Client->future_handleKVBMessage(reqKvb);
+    respKvb = respF.get();
+    deserializeThriftJsonData<PingRespMsg>(respKvb,"");
+
     testlib::waitForKeyPress();
     service1->shutdown();
     service2->shutdown();

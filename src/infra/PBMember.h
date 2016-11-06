@@ -5,50 +5,19 @@
 #include <memory>
 #include <map>
 #include <infra/InfraForwards.h>
+#include <infra/gen/gen-cpp2/pbapi_types.h>
 
 namespace folly {
 class EventBase;
 }
 
 namespace infra {
-
-struct CoordinationClient;
+class GetMemberStateMsg;
+class GetMemberStateRespMsg;
+class BecomeLeaderMsg;
+struct ModuleProvider;
 struct PBMember;
 enum class Status;
-
-/**
- * @brief Base class for diffent roles PBMember can take
- * We do mostly state transition based on events stuff in derived role classes.
- * Try not to add complex members here or in dervied classes.  They belong in
- * PBMember class.  This is to allow quick role switching.
- */
-struct PBRole {
-    enum RoleId {
-        FOLLOWER,
-        ELECTOR,
-        LEADER
-    };
-
-    PBRole(PBMember *parent,
-           RoleId roleId);
-    virtual ~PBRole() = default;
-    inline RoleId getRoleId() const { return roleId_; }
-
-    /**
-     * Possible events
-     * Zookeeper watches
-     * GroupUpdateMsg
-     * ElectionMsg
-     * BecomeLeaderMsg
-     * AddToGroupMsg
-     * IO Msgs
-     * Sync Msgs
-     */
-    virtual void handleGroupWatchEvent(const std::vector<std::string>& children);
- protected:
-    PBMember                    *parent_;
-    RoleId                      roleId_;
-};
 
 struct PBMember {
 
@@ -63,6 +32,7 @@ struct PBMember {
      * coordination role is given to Leader to carry out step 4.
      */
 
+#if 0
     /**
      * Possible events
      * Zookeeper watches
@@ -150,7 +120,6 @@ struct PBMember {
         LEADER_FUNCTIONAL,
         LEADER_END
     };
-#if 0
     void algo() {
         zk->registerWatch(GROUP_PATH, cb);
         zk->createNode(SEQUNETIAL|EPHEMERAL, myuuid);
@@ -228,8 +197,9 @@ struct PBMember {
     }
 #endif
 
-    PBMember(folly::EventBase *eb,
-             CoordinationClient *coordinationClient,
+    PBMember(const std::string &logCtx,
+             folly::EventBase *eb,
+             ModuleProvider *provider,
              const std::string &groupKey,
              const std::vector<std::string> &members,
              const std::string &myId,
@@ -239,46 +209,63 @@ struct PBMember {
 
     /* Events to handle */
     void handleGroupWatchEvent(const std::vector<std::string> &children);
+    folly::Future<GetMemberStateRespMsg> handleGetMemberStateMsg(const GetMemberStateMsg &req);
+    void handleElectionResponse(
+        std::vector<std::pair<std::string, GetMemberStateRespMsg>> values);
+    folly::Future<folly::Unit> handleBecomeLeaderMsg(const BecomeLeaderMsg &req);
 
-    inline const State& getState() const { return state_; }
+    inline const PBMemberState& getState() const { return state_; }
 
-    template<class T>
-    inline T* makeRole()
-    {
-        return new T(this);
-    }
     inline bool isFollowerState() const {
-        return state_ > FOLLOWER_BEGIN && state_ < FOLLOWER_END;
+        return state_ > PBMemberState::FOLLOWER_BEGIN &&
+            state_ < PBMemberState::FOLLOWER_END;
     }
     inline bool isElectorState() const {
-        return state_ > EC_BEGIN && state_ < EC_END;
+        return state_ > PBMemberState::EC_BEGIN &&
+            state_ < PBMemberState::EC_END;
     }
     inline bool isLeaderState() const {
-        return state_ > LEADER_BEGIN && state_ < LEADER_END;
+        return state_ > PBMemberState::LEADER_BEGIN &&
+            state_ < PBMemberState::LEADER_END;
+    }
+    const std::string& getLogContext() const {
+        return logContext_;
     }
 
  protected:
     void handleError_(const Status &status, const std::string &ctx);
     void watchCb_(const std::string &key);
+    void throwIfInvalidTerm_(const int32_t &term);
     
-    void switchState_(State newState, const std::string &ctx);
+    void switchState_(PBMemberState newState, const std::string &ctx);
 
     std::map<uint64_t, std::string> parseMembers_(const std::vector<std::string> &children);
     folly::Future<std::string> acquireElectorLock_();
+    folly::Future<folly::Unit> removeElectorLock_();
+    folly::Future<int64_t> increaseTerm_();
     void issueElectionRequest_();
+    void sendBecomeLeaderMsg_(const std::string &memberId, const int64_t &commitId);
 
     bool hasLock_(const std::vector<std::string> &children);
     bool canIBeElector_(const std::vector<std::string> &children);
     bool hasQuorumMemberCount_(const std::vector<std::string> &children);
 
+    std::string                         logContext_;
     folly::EventBase                    *eb_;
-    CoordinationClient                  *coordinationClient_;
+    ModuleProvider                      *provider_;
     std::string                         groupKey_;
     std::vector<std::string>            memberIds_;
     std::string                         myId_;
     uint32_t                            quorum_;
-    std::unique_ptr<PBRole>             role_;
-    State                               state_ {UNINITIALIZED};
+    PBMemberState                       state_ {PBMemberState::UNINITIALIZED};
+
+    /* TermId is the version # of groupKey_ in config db.  We don't have a
+     * seperate key as groupKey_ version # is sufficient and configdb will
+     * ensure atomic increment as each time groupKey_ is set.
+     * Term id is incremented for every leader election
+     */
+    int32_t                             termId_;
+    int64_t                             commitId_;
 };
 
 }  // namespace infra

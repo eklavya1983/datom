@@ -46,7 +46,7 @@ set(ZOOKEEPER_LIB_DIRS ${ARTIFACTS_LIB_DIRS})
 
 # Common set of libraries to link for binaries
 #set(COMMON_LIBS thriftcpp2 thrift folly glog gflags pthread boost_system double-conversion z)
-set(COMMON_LIBS glog gflags pthread boost_system double-conversion z)
+set(COMMON_LIBS glog gflags pthread boost_system double-conversion z crypto)
 
 # Common set of libraries to link for tests 
 set(COMMON_TEST_LIBS gtest ${COMMON_LIBS})

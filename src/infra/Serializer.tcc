@@ -23,4 +23,12 @@ PayloadT deserializeFromThriftJson(const std::string &payloadBuf,
     return ret;
 }
 
+template <class PayloadT>
+std::string toJsonString(const PayloadT &msg)
+{
+    std::string ret;
+    apache::thrift::JSONSerializer::serialize(msg, &ret);
+    return ret;
+}
+
 } // namespace fds

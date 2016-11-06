@@ -14,17 +14,49 @@
 #include <infra/LockHelper.tcc>
 
 #include <folly/io/async/EventBase.h>
+#include <infra/PBMember.h>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
 
 namespace volumeserver {
 
+struct VolumeReplica : PBMember {
+    using ResourceInfoType = VolumeInfo;
+
+    VolumeReplica(const std::string &logCtx,
+                  folly::EventBase *eb,
+                  ModuleProvider *provider,
+                  const std::vector<std::string> &members,
+                  const uint32_t &quorum,
+                  const VolumeInfo &volumeInfo)
+        : PBMember(logCtx,
+                   eb,
+                   provider,
+                   folly::sformat(
+                       configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
+                       provider->getDatasphereId(), configtree_constants::PB_VOLUMES_TYPE()),
+                   members,
+                   provider->getServiceId(),
+                   quorum)
+    {
+    }
+
+    virtual void applyUpdate(const KVBinaryData &kvb)
+    {
+    }
+};
+#if 0
 template<class ParentT, class ResourceInfoT>
 struct PBResourceReplica {
     using ResourceInfoType = ResourceInfoT;
 
-    PBResourceReplica(ParentT *parent,
+    PBResourceReplica(const std::string &logCtx,
+                      folly::EventBase *eb,
+                      ParentT *parent,
                       const int64_t &version,
+                      const std::string &groupKey,
+                      const std::vector<std::string> &members,
+                      const uint32_t &quorum,
                       const ResourceInfoT& info)
         : parent_(parent)
     {
@@ -32,12 +64,18 @@ struct PBResourceReplica {
     virtual void init()
     {
     }
+    virtual void applyUpdate(const KVBinaryData &kvb)
+    {
+        DCHECK(!"Unimplemented");
+    }
  protected:
     ParentT                 *parent_;
 };
+#endif
 
 // TODO(Rao):
 // 1. Subscribe to events for volume table
+// 2. Move to PBResourceMgr file
 template <class ParentT, class ResourceT>
 struct PBResourceMgr {
     using ResourceTable = std::unordered_map<int64_t, std::shared_ptr<ResourceT>>;
@@ -124,10 +162,18 @@ struct PBResourceMgr {
         auto version = getVersion(kvb);
         auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
         if (isRingMember(ringTable_[resourceInfo.ringId], parent_->getServiceId())) {
-            auto resource = std::make_shared<ResourceT>(parent_, version, resourceInfo);
+            auto resource = std::make_shared<ResourceT>(logContext_, 
+                                                        parent_->getEventBaseFromPool(),
+                                                        parent_,
+                                                        ringTable_[resourceInfo.ringId].memberIds,
+                                                        2,
+                                                        resourceInfo);
             resourceTable_[id] = resource;
             resource->init();
-            CLog(INFO) << "Added resource:" << id << " version:" << version;
+            CLog(INFO) << "Added resource:" << id << " version:" << version
+                << toJsonString(resourceInfo);
+        } else {
+            CVLog(1) << "Ignoring unowned resource update id:" << id << " version:" << version;
         }
     }
 
@@ -140,7 +186,7 @@ struct PBResourceMgr {
         if (itr == resourceTable_.end()) {
             addResourceReplicaIfOwned_(kvb);
         } else {
-            // TODO(Rao): Check if update needs to happen
+            itr->second->applyUpdate(kvb);
         }
     }
 
@@ -156,7 +202,8 @@ void VolumeServer::init()
 {
     Service::init();
     Service::initIOThreadpool_(2);
-    replicaMgr_ = std::make_shared<VolumeReplicaMgr>(this, "volumes");
+    replicaMgr_ = std::make_shared<VolumeReplicaMgr>(this,
+                                                     configtree_constants::PB_VOLUMES_TYPE());
     replicaMgr_->init();
 }
 

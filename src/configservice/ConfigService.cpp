@@ -27,20 +27,20 @@ template<class ConfigServiceT, class ResourceT>
 struct PBResourceSphereConfigMgr {
     PBResourceSphereConfigMgr(ConfigServiceT *parent,
                               const std::string &datasphereId,
-                              const std::string &id,
+                              const std::string &type,
                               int32_t replicaFactor,
                               folly::EventBase *eb)
     {
         parent_ = parent;
         datasphereId_ = datasphereId;
-        id_ = id;
+        resourceType_ = type;
         replicaFactor_ = replicaFactor;
         eb_ = eb;
         nextAddRingId_ = 0;
         nextResourceId_ = 0;
         logContext_ = folly::sformat("{}:PBResourceSphereConfigMgr", parent_->getLogContext());
         resourcesTopic_ = folly::sformat(configtree_constants::TOPIC_PB_SPHERE_RESOURCES(),
-                                         id_);
+                                         resourceType_);
     }
 
     inline const std::string& getLogContext() const {
@@ -88,7 +88,7 @@ struct PBResourceSphereConfigMgr {
 
             auto resourceRoot = folly::sformat(
                 configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
-                datasphereId_, id_, resource.id);
+                datasphereId_, resourceType_, resource.id);
             auto payload = serializeToThriftJson<>(resource, getLogContext());
 
             CLog(INFO) << "add resource root at: " << resourceRoot;
@@ -134,7 +134,7 @@ struct PBResourceSphereConfigMgr {
     {
         DCHECK(eb_->isInEventBaseThread());
         auto ringRoot = folly::sformat(configtree_constants::PB_SPHERE_RING_ROOT_PATH_FORMAT(),
-                                       datasphereId_, id_, ring.id);
+                                       datasphereId_, resourceType_, ring.id);
         auto payload = serializeToThriftJson<>(ring, getLogContext());
 
         CLog(INFO) << "add ring root at: " << ringRoot;
@@ -164,13 +164,14 @@ struct PBResourceSphereConfigMgr {
         parent_->getCoordinationClient()->publishMessage(resourcesTopic_, payload);
 
         CLog(INFO) << "Published " << info
-            << " resource information to ConfigDb version:" << version;
+            << " resource information to ConfigDb version:" << version
+            << " topic:" << resourcesTopic_;
     }
 
     std::string                                 logContext_;
     ConfigServiceT                              *parent_;
     std::string                                 datasphereId_;
-    std::string                                 id_;
+    std::string                                 resourceType_;
     int32_t                                     replicaFactor_;
     folly::EventBase                            *eb_;
     /* Pending services from which ring can be created */
@@ -212,7 +213,7 @@ struct DatasphereConfigMgr {
     {
         volumesConfigMgr_ = std::make_shared<PBVolumeConfigMgr>(parent_,
                                                                 datasphereInfo_.id,
-                                                                "volumes",
+                                                                configtree_constants::PB_VOLUMES_TYPE(),
                                                                 /* TODO(Rao):
                                                                  * Don't hard
                                                                  * code */

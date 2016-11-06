@@ -21,6 +21,10 @@ Service bootup
 Connection cache
 -Connection cache runs in it's own eventbase
 -Each connection also runs in it's own eventbase which is given to the async socket.
+-Connectin cache manages a bunch of TAsyncSockets in cache.  On updates from coordination client to cached sockets will updated.
+
+PBConfigMgr
+PBMember
 
 
 Config service
