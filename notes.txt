@@ -242,3 +242,9 @@ Processor*)::{lambda()#1}>::_M_invoke(std::_Any_data const&) (__functor=...)
 
 cpp2server.cpp
 -has information about parameterizing thrift server
+
+
+
+librdkafka notes
+-If you start consumer before producer, it takes a while before consumer starts receiving produced messages.  It's a better practice to atleast start publisher first (after this it can be restarted or whatever.  What's important is kafka needs know a topic exists).
+-When you restart consumer with groupid x, it will start receiving messages from where it left off.  The consumer can be restared on a different machine but as long as group id matches then messages will be received from where they were last left off.
