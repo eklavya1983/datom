@@ -33,6 +33,8 @@ struct DatomBringupHelper {
 
     void createPrimaryBackupDatasphere(const std::string &datasphereId,
                                        int32_t numNodes);
+    void startPrimaryBackupDatasphere(const std::string &datasphereId);
+
     std::string getLogContext() const { return "DatomBringupHelper"; }
 
     static infra::ServiceInfo generateVolumeServiceInfo(const std::string &datasphereId,

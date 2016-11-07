@@ -10,21 +10,30 @@ namespace infra {
 
 struct ModuleProvider;
 
+/**
+ * @brief Wrapper around HeaderClientChannel.
+ * All accesses must take places in the context of event base.  This helps a
+ * great deal with synchronizing updates
+ */
 struct ConnectionItem {
-    ConnectionItem() = default;
-    ConnectionItem(int64_t v,
-                   const std::shared_ptr<at::HeaderClientChannel> &c)
-        : version(v),
-        channel(c)
-    {}
+    ConnectionItem(ConnectionCache *parent,
+                   folly::EventBase *eb);
 
-    int64_t                                     version{0};
+    folly::Future<std::shared_ptr<at::HeaderClientChannel>> update(int64_t version,
+                                                                   const ServiceInfo &info);
+    folly::Future<std::shared_ptr<at::HeaderClientChannel>> getChannel();
+    const std::string& getLogContext() const;
+
+ protected:
+    ConnectionCache                             *parent_; 
+    folly::EventBase                            *eb_;
+    int64_t                                     version_;
     /* We cache channel instead of socket because clients are constructed out of
      * channels and when client goes out of scope, if channel refcount is zero,
      * underneath transport is closed.  Since AsyncSocket and channel that is
      * built on top of it is meant to be shared, we need to cache the channel
      */
-    std::shared_ptr<at::HeaderClientChannel>    channel;
+    std::shared_ptr<at::HeaderClientChannel>    channel_;
 };
 
 /**
@@ -42,7 +51,8 @@ struct ConnectionCache {
 
     folly::Future<std::shared_ptr<at::HeaderClientChannel>>
         getHeaderClientChannel(const std::string &serviceId);
-    std::shared_ptr<at::HeaderClientChannel> getHeaderClientChannelFromCache(const std::string &serviceId);
+    folly::Future<std::shared_ptr<at::HeaderClientChannel>>
+        getHeaderClientChannelFromCache(const std::string &serviceId);
 
     bool existsInCache(const std::string &serviceId);
 
@@ -55,11 +65,8 @@ struct ConnectionCache {
     ConnectionCache(const ConnectionCache&) = delete;
     ConnectionCache operator=(const ConnectionCache&) = delete;
 
-    std::shared_ptr<at::HeaderClientChannel>
+    folly::Future<std::shared_ptr<at::HeaderClientChannel>>
         updateConnection_(const KVBinaryData &kvb, bool createIfMissing);
-#if 0
-    void fetchMyDatasphereEntries_();
-#endif
 
     std::string                                                     logContext_;
     ModuleProvider                                                  *provider_;

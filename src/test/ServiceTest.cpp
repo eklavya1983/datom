@@ -7,6 +7,7 @@
 #include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 #include <infra/Service.h>
 #include <infra/gen/gen-cpp2/ServiceApi.h>
+#include <infra/gen/gen-cpp2/commontypes_types.tcc>
 #include <infra/CoordinationClient.h>
 #include <infra/ConnectionCache.tcc>
 #include <infra/StatusException.h>
@@ -18,6 +19,7 @@
 #include <volumeserver/VolumeServer.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
 #include <infra/gen/gen-cpp2/service_types.tcc>
+#include <infra/MessageUtils.tcc>
 
 using namespace apache::thrift::async;
 using namespace apache::thrift;
@@ -61,6 +63,11 @@ TEST(ServiceTest, connection_up_down) {
     f.wait();
     ASSERT_TRUE(f.hasException());
 
+    TLog << "Try sendKVBMessage against service2 which isn't up yet.  It should fail";
+    auto sendF = sendKVBMessage<PingMsg, PingRespMsg>(connCache1, "service2", PingMsg());
+    sendF.wait();
+    ASSERT_TRUE(sendF.hasException());
+
     TLog << "Bring up service2 .  Send a message to service2 now and it should work";
     auto serviceInfo2 = bringupHelper.generateVolumeServiceInfo("sphere1", 2);
     bringupHelper.getConfigService()->addService(serviceInfo2);
@@ -78,7 +85,7 @@ TEST(ServiceTest, connection_up_down) {
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
         ASSERT_TRUE(connCache1->\
-                    getHeaderClientChannelFromCache("service2").get() != nullptr);
+                    getHeaderClientChannelFromCache("service2").get().get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 
@@ -108,7 +115,7 @@ TEST(ServiceTest, connection_up_down) {
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
         ASSERT_TRUE(connCache1->\
-                    getHeaderClientChannelFromCache("service2").get() != nullptr);
+                    getHeaderClientChannelFromCache("service2").get().get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 

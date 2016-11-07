@@ -18,6 +18,53 @@ namespace infra {
 
 const int32_t ConnectionCache::CONNECTION_TIMEOUT_MS = 5000;
 
+ConnectionItem::ConnectionItem(ConnectionCache *parent,
+                               folly::EventBase *eb)
+    : parent_(parent),
+    eb_(eb),
+    version_(-1)
+{
+}
+
+const std::string& ConnectionItem::getLogContext() const
+{
+    return parent_->getLogContext();
+}
+
+folly::Future<std::shared_ptr<at::HeaderClientChannel>>
+ConnectionItem::update(int64_t version, const ServiceInfo &info)
+{
+    return via(eb_).then([this, version, info]() {
+        if (version <= version_) {
+            CLog(INFO) << "Update not applied existing version:" << version_
+                << " new version:" << version
+                << info;
+            return channel_;
+        }
+        /* Close old channel */
+        if (channel_) {
+            CVLog(2) << "Closing old connection against id:" << info.id;
+            channel_->closeNow();
+        }
+        auto socket = ata::TAsyncSocket::newSocket(eb_,
+                                                   info.ip,
+                                                   info.port,
+                                                   ConnectionCache::CONNECTION_TIMEOUT_MS);
+        channel_ = std::shared_ptr<at::HeaderClientChannel>(
+            new at::HeaderClientChannel(socket),
+            folly::DelayedDestruction::Destructor());
+        return channel_;
+    });
+}
+
+folly::Future<std::shared_ptr<at::HeaderClientChannel>>
+ConnectionItem::getChannel()
+{
+    return via(eb_).then([this]() {
+        return channel_;
+    });
+}
+
 ConnectionCache::ConnectionCache(const std::string &logContext,
                                  ModuleProvider* provider)
 {
@@ -32,9 +79,10 @@ ConnectionCache::~ConnectionCache()
 
 void ConnectionCache::init()
 {
-    /* TODO(Rao): Register to receive service updates */
+    /* Register to receive service updates */
     auto f = [this](int64_t sequenceNo, const std::string &payload) {
         auto kvb = deserializeFromThriftJson<KVBinaryData>(payload, getLogContext());
+        CVLog(2) << "Connection update:" << toJsonString(kvb);
         updateConnection_(kvb, false);
     };
     provider_->getCoordinationClient()->\
@@ -55,7 +103,7 @@ ConnectionCache::getHeaderClientChannel(const std::string &serviceId)
         SharedLock<folly::SharedMutex> l(connectionsMutex_);
         auto itr = connections_.find(serviceId);
         if (itr != connections_.end()) {
-            return folly::makeFuture(itr->second.channel);
+            return itr->second.getChannel();
         }
     }
 
@@ -63,23 +111,25 @@ ConnectionCache::getHeaderClientChannel(const std::string &serviceId)
         configtree_constants::SERVICE_ROOT_PATH_FORMAT(),
         provider_->getDatasphereId(),
         serviceId); 
-    CVLog(1) << "cache miss for service:" << serviceId
+    CVLog(2) << "cache miss for service:" << serviceId
         << " will try configdb for key: " << serviceEntryKey;
     return provider_->getCoordinationClient()
         ->get(serviceEntryKey)
         .then([this](const KVBinaryData &data) {
+              CVLog(2) << "Fetched service entry:" << toJsonString(data);
               return updateConnection_(data, true);
         });
 }
-std::shared_ptr<at::HeaderClientChannel>
+
+folly::Future<std::shared_ptr<at::HeaderClientChannel>>
 ConnectionCache::getHeaderClientChannelFromCache(const std::string &serviceId)
 {
     SharedLock<folly::SharedMutex> l(connectionsMutex_);
     auto itr = connections_.find(serviceId);
     if (itr != connections_.end()) {
-        return itr->second.channel;
+        return itr->second.getChannel();
     } else {
-        return nullptr;
+        return makeFuture(std::shared_ptr<at::HeaderClientChannel>());
     }
 }
 
@@ -89,7 +139,7 @@ bool ConnectionCache::existsInCache(const std::string &serviceId)
     return connections_.find(serviceId) != connections_.end();
 }
 
-std::shared_ptr<at::HeaderClientChannel>
+folly::Future<std::shared_ptr<at::HeaderClientChannel>>
 ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing)
 {
     auto serviceInfo = deserializeThriftJsonData<ServiceInfo>(kvb, getLogContext());
@@ -97,78 +147,15 @@ ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing
 
     std::unique_lock<folly::SharedMutex> l(connectionsMutex_);
     auto itr = connections_.find(serviceInfo.id);
-    /* Update if new version is higher or we are asked create if entry is
-     * missing
-     */
-    if ((itr == connections_.end() && createIfMissing) ||
-        (itr != connections_.end() && version > itr->second.version)) {
-        folly::EventBase* eb = nullptr;
-        auto socket = ata::TAsyncSocket::newSocket(nullptr);
-        auto channel = std::shared_ptr<at::HeaderClientChannel>(
-            new at::HeaderClientChannel(socket), folly::DelayedDestruction::Destructor());
-        /* Close old channel */
-        if (itr != connections_.end()) {
-            auto oldChannel = itr->second.channel;
-            eb = oldChannel->getEventBase();
-            eb->runInEventBaseThread([this, serviceId = itr->first, conn = itr->second]() {
-                CLog(INFO) << "Closing old connection against service:" << serviceId
-                    << " version:" << conn.version;
-                conn.channel->closeNow();
-            });
-        } else {
-            eb = provider_->getEventBaseFromPool();
+    if (itr == connections_.end()) {
+        if (!createIfMissing) {
+            /* nothing to update just return */
+            return makeFuture(std::shared_ptr<at::HeaderClientChannel>());
         }
-        /* Init new channel.  AsyncSocket::init() needs to run in eventbase */
-        eb->runInEventBaseThread([this, eb, channel, socket, serviceInfo]() {
-            socket->attachEventBase(eb);
-            socket->connect(nullptr,
-                            serviceInfo.ip,
-                            serviceInfo.port,
-                            ConnectionCache::CONNECTION_TIMEOUT_MS);
-            CLog(INFO) << "Connection attempted against ip:" << serviceInfo.ip
-                << " port:" << serviceInfo.port;
-        });
-        CLog(INFO) << "Updated connection cache.  New version:" << version
-            << serviceInfo;
-        connections_[serviceInfo.id] = ConnectionItem(version, channel);
-        return channel;
-    } else {
-        CLog(INFO) << "Updated not applied existing version:"
-            << ((itr == connections_.end()) ? -1 : itr->second.version)
-            << " new version:" << version
-            << serviceInfo;
-        if (itr == connections_.end()) {
-            return nullptr;
-        }
-        return itr->second.channel;
+        std::tie(itr, std::ignore) = connections_.insert(std::make_pair(serviceInfo.id,
+                                                                        ConnectionItem(this, provider_->getEventBaseFromPool())));
     }
+    return itr->second.update(version, serviceInfo);
 }
-
-#if 0
-void ConnectionCache::fetchMyDatasphereEntries_()
-{
-    auto servicesRootPath = folly::sformat(configtree_constants::SERVICES_ROOT_PATH_FORMAT(),
-                                           provider_->getDatasphereId());
-    /* We assume this function is called for service initialization context
-     * That is why there is no locking necessary
-     */
-    CHECK(connections_.size() == 0);
-
-    /* NOTE: This will block.  This is fine as long as we only do it from
-     * service initialization context
-     */
-    auto serviceList = provider_->\
-                       getCoordinationClient()->\
-                       getChildrenSync(servicesRootPath);
-    for (const auto &kvd: serviceList) {
-        auto entry = std::make_shared<CacheItem>();
-        entry->serviceVersion = getVersion(kvd);
-        entry->serviceInfo = deserializeThriftJsonData<ServiceInfo>(kvd, getLogContext());
-        connections_[getConnectionId(entry->serviceInfo)] = entry;
-
-        CLog(INFO) << "Added " << entry->serviceInfo << " version:" << entry->serviceVersion;
-    }
-}
-#endif
 
 }  // namespace infra

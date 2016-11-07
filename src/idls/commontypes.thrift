@@ -1,6 +1,14 @@
 namespace cpp infra 
 namespace java infra.gen
 
+/* For testing */
+struct PingMsg {
+}
+
+/* For testing */
+struct PingRespMsg {
+}
+
 struct DataSphereInfo {
 	1: string 			id;
 }

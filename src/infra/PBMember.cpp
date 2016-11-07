@@ -63,7 +63,7 @@ void PBMember::init()
     provider_->getCoordinationClient()->getChildrenSimple(groupKey_, watchF);
 
     /* Create sequential ephemeral node for this member */
-    auto memberRoot = folly::sformat("{}/{}", groupKey_, myId_);
+    auto memberRoot = folly::sformat("{}/{}:", groupKey_, myId_);
     auto f = provider_->getCoordinationClient()->createEphemeral(
         memberRoot,
         myId_,
@@ -80,6 +80,8 @@ void PBMember::init()
 
 void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
 {
+    CVLog(1) << "GroupWatchEvent " << toJsonString(children);
+
     switch (state_) {
         case PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP:
             if (!hasLock_(children) &&
@@ -239,6 +241,7 @@ void PBMember::handleError_(const Status &status,
 folly::Future<std::string> PBMember::acquireElectorLock_()
 {
     DCHECK(eb_->isInEventBaseThread());
+    CLog(INFO) << "Acquiring elector lock";
     return provider_->getCoordinationClient()->createEphemeral(
         folly::sformat("{}/{}", groupKey_, pbapi_constants::PB_LOCK_KEY()),
         "elector");

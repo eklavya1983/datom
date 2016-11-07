@@ -15,6 +15,8 @@
 #include <infra/ZooKafkaClient.h>
 #include <configservice/ConfigService.h>
 #include <volumeserver/VolumeServer.h>
+#include <infra/MessageUtils.tcc>
+#include <infra/gen/gen-cpp2/commontypes_types.tcc>
 
 using namespace apache::thrift::async;
 using namespace apache::thrift;
@@ -26,12 +28,49 @@ TEST(Datom, pbcluster)
 {
     testlib::DatomBringupHelper<ConfigService> bringupHelper;
     testlib::ScopedDatom<ConfigService> d(bringupHelper);
-    bringupHelper.createPrimaryBackupDatasphere("datasphere1", 3);
+    DataSphereInfo datasphere;
+    datasphere.id = "datasphere1";
+    auto configService = bringupHelper.getConfigService();
+    configService->addDataSphere(datasphere);
+
+    std::vector<ServiceInfo> serviceInfos;
+    for (int i = 0; i < 3; i++) {
+        auto serviceInfo = bringupHelper.generateVolumeServiceInfo(datasphere.id, i);
+        configService->addService(serviceInfo);
+        serviceInfos.push_back(serviceInfo);
+    }
+
+    auto configClient = std::make_shared<ZooKafkaClient>(serviceInfos[0].id,
+                                                         "localhost:2181/datom",
+                                                         serviceInfos[0].id);
+
+    auto service = std::make_shared<VolumeServer>(serviceInfos[0].id,
+                                                  serviceInfos[0],
+                                                  nullptr,
+                                                  configClient);
+    service->init();
+
+    auto configClient2 = std::make_shared<ZooKafkaClient>(serviceInfos[1].id,
+                                                         "localhost:2181/datom",
+                                                         serviceInfos[1].id);
+
+    auto service2 = std::make_shared<VolumeServer>(serviceInfos[1].id,
+                                                  serviceInfos[1],
+                                                  nullptr,
+                                                  configClient2);
+    service2->init();
+
+#if 0
+    auto f = sendKVBMessage<PingMsg, PingRespMsg>(service->getConnectionCache(),
+                                                  serviceInfos[1].id,
+                                                  PingMsg());
+    f.wait();
+    ASSERT_TRUE(f.hasException());
+#endif
 
     sleep(5);
 
-    auto configService = bringupHelper.getConfigService();
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 1; i++) {
         VolumeInfo vol;
         vol.datasphereId = "datasphere1";
         vol.name = folly::sformat("vol{}", i);
@@ -78,7 +117,7 @@ TEST(Datom, pbcluster)
                                                            serviceInfo1.id));
     service1.init();
 #endif
-    testlib::waitForSIGINT();
+    testlib::waitForKeyPress();
 }
 
 int main(int argc, char** argv) {

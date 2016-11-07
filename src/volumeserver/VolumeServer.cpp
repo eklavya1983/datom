@@ -34,7 +34,9 @@ struct VolumeReplica : PBMember {
                    provider,
                    folly::sformat(
                        configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
-                       provider->getDatasphereId(), configtree_constants::PB_VOLUMES_TYPE()),
+                       provider->getDatasphereId(),
+                       configtree_constants::PB_VOLUMES_TYPE(),
+                       volumeInfo.id),
                    members,
                    provider->getServiceId(),
                    quorum)
@@ -136,7 +138,8 @@ struct PBResourceMgr {
         {
             std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
             for (const auto &kvb : resourceVector) {
-                addResourceReplicaIfOwned_(kvb);
+                auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
+                addResourceReplicaIfOwned_(getVersion(kvb), resourceInfo);
             }
         }
 
@@ -148,25 +151,22 @@ struct PBResourceMgr {
         subscribeToTopic(resourcesTopic,
                          [this](int64_t sequenceNo, const std::string& payload) {
                             CLog(INFO) << "Received message: " << sequenceNo;
-#if 0
                             auto kvb = deserializeFromThriftJson<KVBinaryData>(payload,
                                                                                getLogContext());
                              handleResourceConfigTableUpdate_(kvb);
-#endif
                          });
     }
 
-    virtual void addResourceReplicaIfOwned_(const KVBinaryData &kvb)
+    virtual void addResourceReplicaIfOwned_(const int64_t &version,
+                                            const typename ResourceT::ResourceInfoType &resourceInfo)
     {
-        auto id = folly::to<int64_t>(getId(kvb));
-        auto version = getVersion(kvb);
-        auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
+        auto id = getId(resourceInfo);
         if (isRingMember(ringTable_[resourceInfo.ringId], parent_->getServiceId())) {
             auto resource = std::make_shared<ResourceT>(logContext_, 
                                                         parent_->getEventBaseFromPool(),
                                                         parent_,
                                                         ringTable_[resourceInfo.ringId].memberIds,
-                                                        2,
+                                                        2 /* quorum */,
                                                         resourceInfo);
             resourceTable_[id] = resource;
             resource->init();
@@ -179,14 +179,30 @@ struct PBResourceMgr {
 
     virtual void handleResourceConfigTableUpdate_(const KVBinaryData &kvb)
     {
-        auto id = folly::to<int64_t>(getId(kvb));
+        /* NOTE: We are deserializing without knowing what the update type is.  We
+         * need to take that into account
+         */
+        auto version = getVersion(kvb);
+        auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
+        auto id = getId(resourceInfo);
+        std::shared_ptr<ResourceT> resource;
+        {
+            std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
+            auto itr = resourceTable_.find(id);
+            if (itr == resourceTable_.end()) {
+                addResourceReplicaIfOwned_(version, resourceInfo);
+                return;
+            } else {
+                resource = itr->second;
+            }
+        }
 
-        std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
-        auto itr = resourceTable_.find(id);
-        if (itr == resourceTable_.end()) {
-            addResourceReplicaIfOwned_(kvb);
+        /* Apply updates outside the lock */
+        if (resource) {
+            resource->applyUpdate(kvb);
         } else {
-            itr->second->applyUpdate(kvb);
+            CVLog(1) << "Ignoring update as id:" << id << " version:" << version 
+                << " isn't owned";
         }
     }
 

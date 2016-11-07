@@ -1,4 +1,16 @@
 #include <infra/gen/gen-cpp2/commontypes_types.h>
+#include <infra/typestr.h>
+
+template <>
+const char* typeStr<infra::PingMsg>()
+{
+    return "PingMsg";
+}
+template <>
+const char* typeStr<infra::PingRespMsg>()
+{
+    return "PingRespMsg";
+}
 
 namespace infra {
 
@@ -38,4 +50,8 @@ bool isRingMember(const RingInfo& info, const std::string serviceId)
                       serviceId) != info.memberIds.end());
 }
 
+int64_t getId(const VolumeInfo& info)
+{
+    return info.id;
+}
 }  // namespace infra

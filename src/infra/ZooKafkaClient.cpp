@@ -303,12 +303,16 @@ folly::Future<std::string> ZooKafkaClient::createCommon_(const std::string &key,
 folly::Future<std::string> ZooKafkaClient::create(const std::string &key,
                                                   const std::string &value)
 {
+    CVLog(2) << "key:" << key << " value:" << value;
+
     return createCommon_(key, value, 0);
 }
 
 folly::Future<std::string> ZooKafkaClient::createIncludingAncestors(const std::string &key,
                                                                     const std::string &value)
 {
+    CVLog(2) << "key:" << key << " value:" << value;
+
     auto f = folly::makeFuture(std::string());
     for (std::string::size_type pos = 1; pos != std::string::npos; ) {
         pos = key.find( "/", pos );
@@ -340,6 +344,8 @@ folly::Future<std::string> ZooKafkaClient::createEphemeral(const std::string &ke
                                                            const std::string &value,
                                                            bool sequential)
 {
+    CVLog(2) << "key:" << key << " value:" << value << " sequential:" << sequential;
+
     if (sequential) {
         return createCommon_(key, value, ZOO_EPHEMERAL|ZOO_SEQUENCE);
     } else {
@@ -351,6 +357,8 @@ folly::Future<int64_t> ZooKafkaClient::set(const std::string &key,
                                            const std::string &value,
                                            const int &version)
 {
+    CVLog(2) << "key:" << key << " value:" << value << " version:" << version;
+
     SetCtx *ctx = new SetCtx();
     ctx->key = key;
     auto future = ctx->promise.getFuture();
@@ -367,6 +375,8 @@ folly::Future<int64_t> ZooKafkaClient::set(const std::string &key,
 folly::Future<folly::Unit> ZooKafkaClient::del(const std::string &key,
                                                const int &version)
 {
+    CVLog(2) << "key:" << key << " version:" << version;
+
     DeleteCtx *ctx = new DeleteCtx();
     ctx->key = key;
     auto future = ctx->promise.getFuture();
@@ -381,6 +391,8 @@ folly::Future<folly::Unit> ZooKafkaClient::del(const std::string &key,
 
 folly::Future<KVBinaryData> ZooKafkaClient::get(const std::string &key)
 {
+    CVLog(2) << "key:" << key;
+
     GetCtx *ctx = new GetCtx();
     ctx->key = key;
     auto future = ctx->promise.getFuture();
@@ -405,11 +417,13 @@ ZooKafkaClient::getChildrenSimple(const std::string &key,
 
 
     if (watchCb) {
+        CVLog(2) << "key:" << key << " watch set";
         auto watchCtx = new WatchCtx;
         watchCtx->cb = watchCb;
         rc = zoo_awget_children(zh_, key.c_str(), &ZooKafkaClient::watcherFn, watchCtx,
                                 &stringVectorCompletionCb, ctx);
     } else {
+        CVLog(2) << "key:" << key;
         rc = zoo_awget_children(zh_, key.c_str(), nullptr, nullptr,
                                 &stringVectorCompletionCb, ctx);
     }
@@ -440,6 +454,8 @@ ZooKafkaClient::getChildren(const std::string &key)
 
 std::vector<KVBinaryData> ZooKafkaClient::getChildrenSync(const std::string &key)
 {
+    CVLog(2) << "key:" << key;
+
     std::vector<KVBinaryData> ret;
     auto children  = getChildrenSimple(key).get();
     for (const auto &c : children) {
