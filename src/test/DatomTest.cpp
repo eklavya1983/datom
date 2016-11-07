@@ -78,13 +78,6 @@ TEST(Datom, pbcluster)
                                                            serviceInfo1.id));
     service1.init();
 #endif
-    std::cout << "Ready to publish\n";
-    std::string line;
-    while (std::cin >> line) {
-        configService->getCoordinationClient()->publishMessage("pbsphere.volumes", line);
-        std::cout << "Published " << line;
-    }
-
     testlib::waitForSIGINT();
 }
 

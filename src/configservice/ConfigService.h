@@ -50,6 +50,7 @@ struct ConfigService : Service {
  protected:
     DatasphereConfigTable::iterator getDatasphereOrThrow_(const std::string &id);
     void ensureDatasphereMembership_() override;
+    void createPublishableTopics_();
 
     bool                                                        datomConfigured_ {false};
     folly::SharedMutex                                          datasphereMutex_;

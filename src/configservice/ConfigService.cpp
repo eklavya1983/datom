@@ -377,11 +377,20 @@ void ConfigService::init()
 
 }
 
+/*
+ * Initial bootstrapping/one time configuraton of datom is done here
+ */
 void ConfigService::createDatom()
 {
     /* Do a create */
     auto f = coordinationClient_->create(getServiceEntryKey(), "");
     CLog(INFO) << "Created config service root at:" << getServiceEntryKey();
+
+    /* Create topics upfront to work around the librdkafka issue where if
+     * consumer starts before produces does, it takes a while before consumer
+     * starts seeing produced messages
+     */
+    createPublishableTopics_();
 
     publishServiceInfomation_();
 }
@@ -471,6 +480,17 @@ ConfigService::getDatasphereOrThrow_(const std::string &id)
         }
     }
     return itr;
+}
+
+void ConfigService::createPublishableTopics_()
+{
+    coordinationClient_->publishMessage(configtree_constants::TOPIC_SERVICES(),
+                                        std::string());
+
+    auto volumesTopic = folly::sformat(configtree_constants::TOPIC_PB_SPHERE_RESOURCES(),
+                                       configtree_constants::PB_VOLUMES_TYPE());
+    coordinationClient_->publishMessage(volumesTopic,
+                                        std::string());
 }
 
 }  // namespace config

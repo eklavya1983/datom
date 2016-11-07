@@ -134,6 +134,11 @@ Status KafkaClient::publishMessage(const std::string &topic,
             t = itr->second;
         }
     }
+
+    /* Empty message means just create the topic */
+    if (message.empty()) {
+        return Status::STATUS_OK;
+    }
     
     RdKafka::ErrorCode resp =
         producer_->produce(t.get(), RdKafka::Topic::PARTITION_UA,

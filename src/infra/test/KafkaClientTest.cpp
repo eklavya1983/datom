@@ -44,6 +44,10 @@ TEST(KafkaClient, init)
     infra::KafkaClient client(FLAGS_group, "localhost", FLAGS_group);
     client.init();
 
+    /* Create topic first.  Empty message to publishMessage means create topic */
+    auto status = client.publishMessage("test", std::string());
+    ASSERT_TRUE(status == infra::Status::STATUS_OK);
+
     int recvCnt = 0;
     client.subscribeToTopic("test",
                             [&recvCnt](int64_t seq, const std::string &payload) {
