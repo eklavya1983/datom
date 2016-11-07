@@ -14,6 +14,14 @@ std::string serializeToThriftJson(const PayloadT &payload,
     return ret;
 }
 
+template <>
+inline std::string serializeToThriftJson<folly::Unit>(const folly::Unit &payload,
+                                               const std::string &logCtx)
+{
+    std::string ret;
+    return ret;
+}
+
 template<class PayloadT>
 PayloadT deserializeFromThriftJson(const std::string &payloadBuf,
                                    const std::string &logCtx)

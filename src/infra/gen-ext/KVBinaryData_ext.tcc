@@ -135,4 +135,23 @@ struct KVBThriftJsonHandler{
     Handler handler_;
 };
 
+template <class ReqT>
+struct KVBOnewayThriftJsonHandler{
+    using Handler = std::function<void (std::unique_ptr<ReqT>)>;
+    KVBOnewayThriftJsonHandler(const Handler &handler)
+        : handler_(handler)
+    {
+    }
+    folly::Future<std::unique_ptr<KVBinaryData>> operator()(std::unique_ptr<KVBinaryData> kvb)
+    {
+        std::unique_ptr<ReqT> req(new ReqT);
+        *req = deserializeThriftJsonData<ReqT>(*kvb, "");
+        handler_(std::move(req));
+        return folly::makeFuture(std::make_unique<KVBinaryData>());
+    }
+
+ private:
+    Handler handler_;
+};
+
 }  // namespace infra

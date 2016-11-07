@@ -46,9 +46,10 @@ TEST(Datom, pbcluster)
 
     auto service = std::make_shared<VolumeServer>(serviceInfos[0].id,
                                                   serviceInfos[0],
-                                                  nullptr,
+                                                  std::make_shared<ServiceApiHandler>(),
                                                   configClient);
     service->init();
+    service->run(true);
 
     auto configClient2 = std::make_shared<ZooKafkaClient>(serviceInfos[1].id,
                                                          "localhost:2181/datom",
@@ -56,9 +57,10 @@ TEST(Datom, pbcluster)
 
     auto service2 = std::make_shared<VolumeServer>(serviceInfos[1].id,
                                                   serviceInfos[1],
-                                                  nullptr,
+                                                  std::make_shared<ServiceApiHandler>(),
                                                   configClient2);
     service2->init();
+    service2->run(true);
 
 #if 0
     auto f = sendKVBMessage<PingMsg, PingRespMsg>(service->getConnectionCache(),

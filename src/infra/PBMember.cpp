@@ -11,6 +11,7 @@
 #include <infra/gen/gen-cpp2/pbapi_constants.h>
 #include <infra/gen/gen-cpp2/pbapi_types.h>
 #include <infra/gen/gen-cpp2/pbapi_types.tcc>
+#include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/StatusException.h>
 #include <infra/typestr.h>
 #include <infra/MessageUtils.tcc>
@@ -32,9 +33,12 @@ const char* typeStr<infra::BecomeLeaderMsg>() {
 
 namespace infra {
 
+const int32_t PBMember::GROUPWATCH_INTERVAL_MS = 10000;
+
 PBMember::PBMember(const std::string &logCtx,
                    folly::EventBase *eb,
                    ModuleProvider *provider,
+                   int64_t resourceId,
                    const std::string &groupKey,
                    const std::vector<std::string> &members,
                    const std::string &myId,
@@ -42,11 +46,14 @@ PBMember::PBMember(const std::string &logCtx,
     : logContext_(logCtx),
     eb_(eb),
     provider_(provider),
+    resourceId_(resourceId),
     groupKey_(groupKey),
     memberIds_(members),
     myId_(myId),
     quorum_(quorum)
 {
+    termId_ = commontypes_constants::INVALID_VALUE();
+    commitId_ = commontypes_constants::INVALID_VALUE();
 }
 
 void PBMember::init()
@@ -80,6 +87,8 @@ void PBMember::init()
 
 void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
 {
+    DCHECK(eb_->isInEventBaseThread());
+
     CVLog(1) << "GroupWatchEvent " << toJsonString(children);
 
     switch (state_) {
@@ -87,7 +96,7 @@ void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
             if (!hasLock_(children) &&
                 canIBeElector_(children))  {
                 switchState_(PBMemberState::EC_ACQUIRE_LOCK, "handleGroupWatchEvent");
-                auto f = acquireElectorLock_();
+                auto f = acquireLock_(pbapi_constants::PB_LOCKTYPE_ELECTOR());
                 f
                 .via(eb_)
                 .then([this]() {
@@ -97,6 +106,7 @@ void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
                 .then([this](int64_t term) {
                     DCHECK(state_ == PBMemberState::EC_ACQUIRE_LOCK);
                     termId_ = term;
+                    CLog(INFO) << "Term set to:" << termId_;
                     return provider_->getCoordinationClient()->getChildrenSimple(groupKey_);
                 })
                 .then([this](const std::vector<std::string> &children) {
@@ -128,26 +138,38 @@ void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
     }
 }
 
-folly::Future<GetMemberStateRespMsg>
-PBMember::handleGetMemberStateMsg(const GetMemberStateMsg &req)
+folly::Future<std::unique_ptr<GetMemberStateRespMsg>>
+PBMember::handleGetMemberStateMsg(std::unique_ptr<GetMemberStateMsg> req)
 {
-    throwIfInvalidTerm_(req.termId);
+    return via(eb_).then([this, req=std::move(req)]() {
+        throwIfInvalidTerm_(req->termId);
 
-    GetMemberStateRespMsg resp;
-    resp.commitId = commitId_;
+        auto resp = std::make_unique<GetMemberStateRespMsg>();
+        resp->commitId = commitId_;
 
-    return folly::makeFuture(resp);
+        return resp;
+    });
 }
 
-folly::Future<folly::Unit>
-PBMember::handleBecomeLeaderMsg(const BecomeLeaderMsg &req)
+void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
 {
-    throwIfInvalidTerm_(req.termId);
-    
-    switchState_(PBMemberState::LEADER_BEGIN,
-                 "Become leader message");
-
-    return folly::makeFuture();
+    via(eb_).then([this, req=std::move(req)]() {
+        throwIfInvalidTerm_(req->termId);
+        // TODO(Rao): Any further necessary checks such as whethere we are in
+        // right state to become leader etc.
+        auto f = acquireLock_(pbapi_constants::PB_LOCKTYPE_LEADER());
+        f
+        .via(eb_)
+        .then([this]() {
+            switchState_(PBMemberState::LEADER_BEGIN,
+                         "Become leader message");
+            //TODO(Rao): Send a message to tell the group members we have a
+            //funciton group
+        })
+        .onError([this](folly::exception_wrapper ew) {
+            handleError_(Status::STATUS_INVALID, "acquire leader lock");
+        });
+    });
 }
 
 void
@@ -156,6 +178,7 @@ PBMember::handleElectionResponse(
 {
     DCHECK(eb_->isInEventBaseThread());
     DCHECK(state_ == PBMemberState::EC_ELECTION_IN_PROGRESS);
+
     /* Determine leader */
     /* For now leader is the entity with latest state.  TODO(Rao): This needs to be
      * imporved so that we take term into account as well
@@ -167,12 +190,10 @@ PBMember::handleElectionResponse(
                 maxIdx = i;
             }
         }
-        /*
-         * Remove lock.  Remove lock before switching to follower role as
-         * removing lock will trigger handleGroupWatchEvent and if we are in
-         * in member role, we could re-acquire the lock
-         */
-        removeElectorLock_()
+
+        lastElectionTimepoint_ = getTimePoint();
+
+        removeLock_(pbapi_constants::PB_LOCKTYPE_ELECTOR())
             .via(eb_)
             .then([this,
                   leader=values[maxIdx].first,
@@ -180,9 +201,12 @@ PBMember::handleElectionResponse(
                 switchState_(PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP,
                              folly::sformat("leader id:{} elected", leader));
                 sendBecomeLeaderMsg_(leader, commitId);
+            })
+            .onError([this](folly::exception_wrapper ew) {
+                handleError_(Status::STATUS_INVALID, "remove lock");
             });
     } else {
-        switchState_(PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP,
+        switchState_(PBMemberState::EC_WAITING_FOR_QUORUM,
                      "Leader not elected, not enough members for quorum");
         // TODO(Rao): Have some timer based method to redo election to ensure
         // election happens again
@@ -225,6 +249,16 @@ void PBMember::switchState_(PBMemberState newState, const std::string &ctx)
         << "->" << _PBMemberState_VALUES_TO_NAMES.at(newState) << "]"
         << " - " << ctx;
     state_ = newState;
+
+}
+
+void PBMember::scheduleGroupWatchEvent_()
+{
+    eb_->runAfterDelay([this]() {
+                           CLog(INFO) << "Manual group watch event triggered";
+                           watchCb_(groupKey_);
+                       },
+                       GROUPWATCH_INTERVAL_MS);
 }
 
 void PBMember::handleError_(const Status &status,
@@ -238,19 +272,19 @@ void PBMember::handleError_(const Status &status,
     // can be created
 }
 
-folly::Future<std::string> PBMember::acquireElectorLock_()
+folly::Future<std::string> PBMember::acquireLock_(const std::string &lockType)
 {
     DCHECK(eb_->isInEventBaseThread());
-    CLog(INFO) << "Acquiring elector lock";
+    CLog(INFO) << "Acquiring lock as:" << lockType;
     return provider_->getCoordinationClient()->createEphemeral(
         folly::sformat("{}/{}", groupKey_, pbapi_constants::PB_LOCK_KEY()),
-        "elector");
+        lockType);
 }
 
-folly::Future<folly::Unit> PBMember::removeElectorLock_()
+folly::Future<folly::Unit> PBMember::removeLock_(const std::string &lockType)
 {
     DCHECK(eb_->isInEventBaseThread());
-    CLog(INFO) << "Removing elector lock";
+    CLog(INFO) << "Removing lock:" << lockType;
     return provider_->getCoordinationClient()->del(
         folly::sformat("{}/{}", groupKey_, pbapi_constants::PB_LOCK_KEY()), -1);
 }
@@ -258,6 +292,7 @@ folly::Future<folly::Unit> PBMember::removeElectorLock_()
 folly::Future<int64_t> PBMember::increaseTerm_()
 {
     DCHECK(eb_->isInEventBaseThread());
+    CLog(INFO) << "Increasing term";
     return provider_->getCoordinationClient()->set(groupKey_, "", -1);
 }
 
@@ -266,6 +301,9 @@ void PBMember::issueElectionRequest_()
     DCHECK(eb_->isInEventBaseThread());
     /* Prepare message */
     auto msg = GetMemberStateMsg();
+    msg.groupType = configtree_constants::PB_VOLUMES_TYPE();
+    msg.termId = termId_;
+    msg.resourceId =  resourceId_;
 
     std::vector<folly::Future<GetMemberStateRespMsg>> futures;
     /* Send to each child in the group */
@@ -297,6 +335,7 @@ void PBMember::sendBecomeLeaderMsg_(const std::string &memberId,
     DCHECK(eb_->isInEventBaseThread());
     /* Prepare message */
     auto msg = BecomeLeaderMsg();
+    msg.resourceId = resourceId_;
     msg.termId = termId_;
     msg.commitId = commitId;
     auto f = sendKVBMessage<BecomeLeaderMsg>(
@@ -304,9 +343,10 @@ void PBMember::sendBecomeLeaderMsg_(const std::string &memberId,
         memberId, 
         msg);
     CLog(INFO) << "sent BecomeLeaderMsg " << toJsonString(msg);
-    // TODO(Rao):
-    // Handle when case leader doesn't show up evenn after become leader has
-    // been sent
+    /* schedule groupwatch event to be thrown so that in case leader doesnt
+     * assume the role, we can retry the election
+     */
+    scheduleGroupWatchEvent_();
 }
 
 bool PBMember::hasLock_(const std::vector<std::string> &children)
@@ -334,6 +374,9 @@ PBMember::parseMembers_(const std::vector<std::string> &children)
 
 bool PBMember::canIBeElector_(const std::vector<std::string> &children)
 {
+    if (elapsedTime(lastElectionTimepoint_) < std::chrono::milliseconds(GROUPWATCH_INTERVAL_MS)) {
+        return false;
+    }
     auto members = parseMembers_(children);
     return (members.size() > 0 && members.begin()->second == myId_);
 }

@@ -135,7 +135,7 @@ createPrimaryBackupDatasphere(const std::string &datasphereId,
              
         auto service = std::make_shared<VolumeServer>(info.id,
                                                       info,
-                                                      nullptr,
+                                                      std::make_shared<ServiceApiHandler>(),
                                                       configClient);
         service->init();
         auto id = folly::sformat("{}:{}", datasphereId, info.id);

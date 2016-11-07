@@ -1,10 +1,12 @@
 namespace cpp infra 
 
 const string PB_LOCK_KEY="LOCK"
+const string PB_LOCKTYPE_ELECTOR="elector"
+const string PB_LOCKTYPE_LEADER="leader"
 
 struct GetMemberStateMsg {
     1: string		groupType;
-    2: i64		groupId;
+    2: i64		resourceId;
     3: i32		termId;
 }
 
@@ -13,8 +15,9 @@ struct GetMemberStateRespMsg {
 }
 
 struct BecomeLeaderMsg {
-    1: i32		termId;
-    2: i64 		commitId;
+    1: i64		resourceId;
+    2: i32		termId;
+    3: i64 		commitId;
 }
 
 /**

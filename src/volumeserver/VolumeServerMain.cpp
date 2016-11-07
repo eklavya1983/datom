@@ -29,7 +29,7 @@ int main() {
     
     auto service = std::make_shared<VolumeServer>(info.id,
                                                   info,
-                                                  nullptr,
+                                                  std::make_shared<ServiceApiHandler>(),
                                                   configClient);
     service->init();
     testlib::waitForSIGINT();

@@ -12,6 +12,8 @@
 #include <infra/MessageException.h>
 #include <infra/gen/gen-cpp2/status_types.h>
 #include <infra/LockHelper.tcc>
+#include <infra/typestr.h>
+#include <infra/gen/gen-cpp2/pbapi_types.tcc>
 
 #include <folly/io/async/EventBase.h>
 #include <infra/PBMember.h>
@@ -32,6 +34,7 @@ struct VolumeReplica : PBMember {
         : PBMember(logCtx,
                    eb,
                    provider,
+                   volumeInfo.id,
                    folly::sformat(
                        configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
                        provider->getDatasphereId(),
@@ -97,11 +100,16 @@ struct PBResourceMgr {
     {
         CHECK(!"Unimplemented");
     }
-    virtual std::shared_ptr<ResourceT> getResource()
+    virtual std::shared_ptr<ResourceT> getResourceOrThrow(int64_t id)
     {
-        CHECK(!"Unimplemented");
-        return nullptr;
+        SharedLock<folly::SharedMutex> l(resourceTableMutex_);
+        auto itr = resourceTable_.find(id);
+        if (itr == resourceTable_.end()) {
+            throw StatusException(Status::STATUS_INVALID_RESOURCE);
+        }
+        return itr->second;
     }
+
     const std::string& getLogContext() const {
         return logContext_;
     }
@@ -221,6 +229,30 @@ void VolumeServer::init()
     replicaMgr_ = std::make_shared<VolumeReplicaMgr>(this,
                                                      configtree_constants::PB_VOLUMES_TYPE());
     replicaMgr_->init();
+
+    registerHandlers_();
+}
+
+void VolumeServer::registerHandlers_()
+{
+    auto handler = getHandler<ServiceApiHandler>();
+    handler->registerKVBMessageHandler(
+        typeStr<GetMemberStateMsg>(),
+        KVBThriftJsonHandler<GetMemberStateMsg, GetMemberStateRespMsg>(
+            [this](std::unique_ptr<GetMemberStateMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                return replica->handleGetMemberStateMsg(std::move(req));
+            })
+        );
+
+    handler->registerKVBMessageHandler(
+        typeStr<BecomeLeaderMsg>(),
+        KVBOnewayThriftJsonHandler<BecomeLeaderMsg>(
+            [this](std::unique_ptr<BecomeLeaderMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                replica->handleBecomeLeaderMsg(std::move(req));
+            })
+        );
 }
 
 }  // namespace volumeserver 

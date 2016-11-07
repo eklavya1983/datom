@@ -46,6 +46,7 @@ struct RingInfo {
 }
 
 const i32 INVALID_VERSION = -1;
+const i32 INVALID_VALUE = -1;
 
 /* Common keys */
 const string KEY_VERSION                        = "version"

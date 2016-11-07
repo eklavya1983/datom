@@ -6,6 +6,7 @@
 #include <map>
 #include <infra/InfraForwards.h>
 #include <infra/gen/gen-cpp2/pbapi_types.h>
+#include <infra/TimeUtil.h>
 
 namespace folly {
 class EventBase;
@@ -200,6 +201,7 @@ struct PBMember {
     PBMember(const std::string &logCtx,
              folly::EventBase *eb,
              ModuleProvider *provider,
+             int64_t resourceId,
              const std::string &groupKey,
              const std::vector<std::string> &members,
              const std::string &myId,
@@ -209,10 +211,11 @@ struct PBMember {
 
     /* Events to handle */
     void handleGroupWatchEvent(const std::vector<std::string> &children);
-    folly::Future<GetMemberStateRespMsg> handleGetMemberStateMsg(const GetMemberStateMsg &req);
+    folly::Future<std::unique_ptr<GetMemberStateRespMsg>>
+        handleGetMemberStateMsg(std::unique_ptr<GetMemberStateMsg> req);
     void handleElectionResponse(
         std::vector<std::pair<std::string, GetMemberStateRespMsg>> values);
-    folly::Future<folly::Unit> handleBecomeLeaderMsg(const BecomeLeaderMsg &req);
+    void handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req);
 
     inline const PBMemberState& getState() const { return state_; }
 
@@ -232,16 +235,19 @@ struct PBMember {
         return logContext_;
     }
 
+    static const int32_t GROUPWATCH_INTERVAL_MS;
+
  protected:
     void handleError_(const Status &status, const std::string &ctx);
     void watchCb_(const std::string &key);
+    void scheduleGroupWatchEvent_();
     void throwIfInvalidTerm_(const int32_t &term);
     
     void switchState_(PBMemberState newState, const std::string &ctx);
 
     std::map<uint64_t, std::string> parseMembers_(const std::vector<std::string> &children);
-    folly::Future<std::string> acquireElectorLock_();
-    folly::Future<folly::Unit> removeElectorLock_();
+    folly::Future<std::string> acquireLock_(const std::string &lockType);
+    folly::Future<folly::Unit> removeLock_(const std::string &lockType);
     folly::Future<int64_t> increaseTerm_();
     void issueElectionRequest_();
     void sendBecomeLeaderMsg_(const std::string &memberId, const int64_t &commitId);
@@ -253,6 +259,7 @@ struct PBMember {
     std::string                         logContext_;
     folly::EventBase                    *eb_;
     ModuleProvider                      *provider_;
+    int64_t                             resourceId_;
     std::string                         groupKey_;
     std::vector<std::string>            memberIds_;
     std::string                         myId_;
@@ -265,6 +272,7 @@ struct PBMember {
      * Term id is incremented for every leader election
      */
     int32_t                             termId_;
+    TimePoint                           lastElectionTimepoint_; 
     int64_t                             commitId_;
 };
 

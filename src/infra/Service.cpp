@@ -24,6 +24,7 @@ ServiceApiHandler::future_handleKVBMessage(std::unique_ptr<KVBinaryData> message
     auto type = getType(*message);
     auto itr = kvbMessageHandlers_.find(type);
     if (itr == kvbMessageHandlers_.end()) {
+        // CLog(WARNING) << "Unknow type:" << type << " fro KVBMessage.  Ignoring message";
         throw apache::thrift::TApplicationException(
             folly::sformat("No handler registered for type:{}", type));
     }

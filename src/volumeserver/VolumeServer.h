@@ -31,6 +31,8 @@ struct VolumeServer : Service {
     void init() override;
 
  protected:
+    void registerHandlers_();
+
     std::shared_ptr<VolumeReplicaMgr>                           replicaMgr_; 
 };
 
