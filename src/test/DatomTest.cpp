@@ -22,7 +22,7 @@ using namespace apache::thrift::async;
 using namespace apache::thrift;
 using namespace infra;
 using namespace config;
-using namespace volumeserver;
+using namespace volume;
 
 TEST(Datom, pbcluster)
 {

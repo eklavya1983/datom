@@ -19,10 +19,12 @@
 #include <infra/PBMember.h>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen/gen-cpp2/volumeapi_types.h>
+#include <volumeserver/VolumeHandleIf.h>
 
-namespace volumeserver {
+namespace volume {
 
-struct VolumeReplica : PBMember {
+struct VolumeReplica : PBMember, VolumeHandleIf {
     using ResourceInfoType = VolumeInfo;
 
     VolumeReplica(const std::string &logCtx,
@@ -48,6 +50,24 @@ struct VolumeReplica : PBMember {
 
     virtual void applyUpdate(const KVBinaryData &kvb)
     {
+    }
+
+    folly::Future<std::unique_ptr<UpdateBlobRespMsg>> updateBlob(std::unique_ptr<UpdateBlobMsg> msg) override
+    {
+        return folly::makeFuture(std::make_unique<UpdateBlobRespMsg>());
+#if 0
+        return
+            chunkClusterHandle
+                ->updateChunks()
+                .then([]() {
+                      volMetaHandle->updateBlobMeta();
+                });
+#endif
+    }
+
+    folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>> updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg) override
+    {
+        return folly::makeFuture(std::make_unique<UpdateBlobMetaRespMsg>());
     }
 };
 #if 0
@@ -255,4 +275,4 @@ void VolumeServer::registerHandlers_()
         );
 }
 
-}  // namespace volumeserver 
+}  // namespace volume

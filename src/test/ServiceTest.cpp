@@ -25,7 +25,7 @@ using namespace apache::thrift::async;
 using namespace apache::thrift;
 using namespace infra;
 using namespace config;
-using namespace volumeserver;
+using namespace volume;
 
 #define SUBTEST(_subtest_, _lamda_) \
     TLog << __subtest_; \

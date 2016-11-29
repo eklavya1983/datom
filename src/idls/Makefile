@@ -12,6 +12,7 @@ infra: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen service.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen configapi.thrift
 	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen pbapi.thrift
+	$(FBTHRIFT_CPP2) -o $(TOPDIR)/src/infra/gen volumeapi.thrift
 
 infra-python: commontypes.thrift status.thrift configtree.thrift service.thrift
 	$(FBTHRIFT_CPP) --gen py -out $(TOPDIR)/src/python/gen commontypes.thrift

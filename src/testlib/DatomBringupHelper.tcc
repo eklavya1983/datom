@@ -17,7 +17,7 @@
 
 namespace testlib {
 using namespace infra;
-using namespace volumeserver;
+using namespace volume;
 
 template <class ConfigServiceT>
 DatomBringupHelper<ConfigServiceT>::DatomBringupHelper()

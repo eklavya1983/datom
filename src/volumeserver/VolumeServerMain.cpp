@@ -12,7 +12,7 @@ DEFINE_string(ip, "localhost", "ip");
 DEFINE_int32(port, 2085, "port");
 
 using namespace infra;
-using namespace volumeserver;
+using namespace volume;
 
 int main() {
     ServiceInfo info;

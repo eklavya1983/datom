@@ -6,7 +6,7 @@
 #include <infra/Service.h>
 #include <folly/SharedMutex.h>
 
-namespace volumeserver {
+namespace volume {
 
 using namespace infra;
 
