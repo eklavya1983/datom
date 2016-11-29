@@ -53,10 +53,11 @@ const string KEY_VERSION                        = "version"
 const string KEY_TYPE                           = "type"
 const string KEY_ID				= "id"
 
+typedef binary (cpp.type = "std::unique_ptr<folly::IOBuf>") InfraBuffer 
 /* Holds binary data with some properties.  Typical properties include type, version, etc. */
 struct KVBinaryData {
 	1: map<string, string>  props;
-	2: binary               data;
+	2: InfraBuffer 		payload;
 }
 
 struct Properties {

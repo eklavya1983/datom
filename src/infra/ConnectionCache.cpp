@@ -142,7 +142,7 @@ bool ConnectionCache::existsInCache(const std::string &serviceId)
 folly::Future<std::shared_ptr<at::HeaderClientChannel>>
 ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing)
 {
-    auto serviceInfo = deserializeThriftJsonData<ServiceInfo>(kvb, getLogContext());
+    auto serviceInfo = getFromThriftJsonPayload<ServiceInfo>(kvb);
     auto version = getVersion(kvb);
 
     std::unique_lock<folly::SharedMutex> l(connectionsMutex_);

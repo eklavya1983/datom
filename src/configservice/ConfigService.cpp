@@ -158,7 +158,7 @@ struct PBResourceSphereConfigMgr {
         /* Publish the resource information to resources topic */
         KVBinaryData kvb;
         setVersion(kvb, version);
-        kvb.data = serializeToThriftJson<>(info, getLogContext());
+        setAsThriftJsonPayload<ResourceT>(kvb, info);
 
         std::string payload = serializeToThriftJson<>(kvb, getLogContext());
         parent_->getCoordinationClient()->publishMessage(resourcesTopic_, payload);

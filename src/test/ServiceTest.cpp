@@ -173,15 +173,15 @@ TEST(ServiceTest, connection_up_down) {
     TLog << "Test handling invallid handleKVBMessage";
     handler2->registerKVBMessageHandler(
         "PingMsg",
-        KVBThriftJsonHandler<PingMsg, PingRespMsg>(
+        KVBHandler<PingMsg, PingRespMsg>(
             [](std::unique_ptr<PingMsg> req) {
                 return folly::makeFuture(folly::make_unique<PingRespMsg>());
             }));
     setType(reqKvb, "PingMsg");
-    reqKvb.data = serializeToThriftJson<PingMsg>(PingMsg(), "");
+    setAsBinaryPayload(reqKvb, PingMsg());
     respF = svc2Client->future_handleKVBMessage(reqKvb);
     respKvb = respF.get();
-    deserializeThriftJsonData<PingRespMsg>(respKvb,"");
+    getFromBinaryPayload<PingRespMsg>(respKvb);
 
     testlib::waitForKeyPress();
     service1->shutdown();

@@ -3,6 +3,7 @@
 #include <infra/Serializer.tcc>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
 #include <infra/CoordinationClient.h>
+#include <infra/gen-ext/KVBinaryData_ext.tcc>
 
 
 namespace infra {
@@ -22,7 +23,7 @@ void PropertiesCache::init()
     // NOTE: f.get() can throw an exception
     auto data = f.get();
     /* Deserialize data */
-    Properties props = deserializeFromThriftJson<Properties>(data.data, logContext_);
+    Properties props = getFromThriftJsonPayload<Properties>(data);
     for (const auto &kv : props.props) {
         cache_[kv.first] = kv.second;
     }

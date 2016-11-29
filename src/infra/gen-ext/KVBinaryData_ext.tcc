@@ -8,6 +8,7 @@
 
 namespace infra {
 
+#if 0
 template <class T>
 struct KVBinaryDataExt {
     KVBinaryDataExt(const T& data) {
@@ -60,6 +61,7 @@ struct KVBinaryDataExt {
     T                                       data_;
     std::map<std::string, std::string>      props_;
 };
+#endif
 
 template <class T>
 void setProp(KVBinaryData &kvb, const std::string &key, const T &val)
@@ -104,54 +106,41 @@ inline std::string getId(const KVBinaryData &kvb)
 }
 
 template <class T>
-T deserializeThriftJsonData(const KVBinaryData &kvb, const std::string &logContext)
+inline void setAsThriftJsonPayload(KVBinaryData &kvb, const T &payload)
 {
-    T ret;
-    ret = deserializeFromThriftJson<T>(kvb.data, logContext); 
-    return ret;
+    folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
+    apache::thrift::JSONSerializer::serialize<>(payload, &queue);
+    kvb.payload = queue.move();
 }
 
-template <class ReqT, class RespT>
-struct KVBThriftJsonHandler{
-    using Handler = std::function<folly::Future<std::unique_ptr<RespT>> (std::unique_ptr<ReqT>)>;
-    KVBThriftJsonHandler(const Handler &handler)
-        : handler_(handler)
-    {
-    }
-    folly::Future<std::unique_ptr<KVBinaryData>> operator()(std::unique_ptr<KVBinaryData> kvb)
-    {
-        std::unique_ptr<ReqT> req(new ReqT);
-        *req = deserializeThriftJsonData<ReqT>(*kvb, "");
-        return
-            handler_(std::move(req))
-            .then([](std::unique_ptr<RespT> resp) {
-                std::unique_ptr<KVBinaryData> retKvb (new KVBinaryData);
-                retKvb->data = serializeToThriftJson<RespT>(*resp, "");
-                return retKvb;
-            });
-    }
+template <class T>
+inline T getFromThriftJsonPayload(const KVBinaryData &kvb)
+{
+    return apache::thrift::JSONSerializer::deserialize<T>(kvb.get_payload().get());
+}
 
- private:
-    Handler handler_;
-};
+template <class T>
+inline void setAsBinaryPayload(KVBinaryData &kvb, const T &payload)
+{
+    folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
+    apache::thrift::BinarySerializer::serialize<>(payload, &queue);
+    kvb.payload = queue.move();
+}
 
-template <class ReqT>
-struct KVBOnewayThriftJsonHandler{
-    using Handler = std::function<void (std::unique_ptr<ReqT>)>;
-    KVBOnewayThriftJsonHandler(const Handler &handler)
-        : handler_(handler)
-    {
-    }
-    folly::Future<std::unique_ptr<KVBinaryData>> operator()(std::unique_ptr<KVBinaryData> kvb)
-    {
-        std::unique_ptr<ReqT> req(new ReqT);
-        *req = deserializeThriftJsonData<ReqT>(*kvb, "");
-        handler_(std::move(req));
-        return folly::makeFuture(std::make_unique<KVBinaryData>());
-    }
+template <class T>
+inline T getFromBinaryPayload(const KVBinaryData &kvb)
+{
+    return apache::thrift::BinarySerializer::deserialize<T>(kvb.get_payload().get());
+}
 
- private:
-    Handler handler_;
-};
+inline std::string toString(const folly::IOBuf& buf) {
+    std::string result;
+    result.reserve(buf.computeChainDataLength());
+    for (auto& b : buf) {
+        result.append(reinterpret_cast<const char*>(b.data()), b.size());
+    }
+    return result;
+}
+
 
 }  // namespace infra

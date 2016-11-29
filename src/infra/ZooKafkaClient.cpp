@@ -112,8 +112,8 @@ static void dataCompletionCb(int rc, const char *value, int value_len,
     } else {
         KVBinaryData kvb;
         setVersion(kvb, stat->version);
-        kvb.data = std::move(std::string(value, value_len));
-        ctx->promise.setValue(kvb);
+        kvb.payload = folly::IOBuf::copyBuffer(value, value_len);
+        ctx->promise.setValue(std::move(kvb));
     }
     delete ctx;
 }
@@ -461,7 +461,7 @@ std::vector<KVBinaryData> ZooKafkaClient::getChildrenSync(const std::string &key
     for (const auto &c : children) {
         auto data = this->get(folly::sformat("{}/{}", key, c)).get();
         setId(data, c);
-        ret.push_back(data);
+        ret.push_back(std::move(data));
     }
     return ret;
 }

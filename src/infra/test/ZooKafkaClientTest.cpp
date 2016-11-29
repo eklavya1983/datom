@@ -54,7 +54,7 @@ TEST(ZooKafkaClient, basic_ops)
     auto getResult = client.get("/keys");
     getResult.wait();
     ASSERT_FALSE(getResult.getTry().hasException());
-    ASSERT_EQ(getResult.value().data, "keys");
+    ASSERT_EQ(infra::toString(*(getResult.value().payload)), "keys");
 
     /* Add some children */
     auto res = client.create("/services", "")
@@ -118,7 +118,7 @@ TEST(ZooKafkaClient, basic_ops)
           });
     versionRes.wait();
     ASSERT_FALSE(versionRes.getTry().hasException());
-    ASSERT_EQ(client.get("/datom4").get().data, "datom4");
+    ASSERT_EQ(infra::toString(*client.get("/datom4").get().payload), "datom4");
 
     /* delete test */
     /* deleting existing key should succeed */

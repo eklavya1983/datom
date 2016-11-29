@@ -14,6 +14,7 @@
 #include <infra/LockHelper.tcc>
 #include <infra/typestr.h>
 #include <infra/gen/gen-cpp2/pbapi_types.tcc>
+#include <infra/MessageUtils.tcc>
 
 #include <folly/io/async/EventBase.h>
 #include <infra/PBMember.h>
@@ -145,7 +146,7 @@ struct PBResourceMgr {
         auto ringVector = parent_->getCoordinationClient()->getChildrenSync(ringsRoot);
         for (const auto &kvb : ringVector) {
             auto id = folly::to<int64_t>(getId(kvb));
-            ringTable_[id] = deserializeThriftJsonData<RingInfo>(kvb, getLogContext());
+            ringTable_[id] = getFromThriftJsonPayload<RingInfo>(kvb);
         }
 
         /* Pull resource table from configdb */
@@ -166,7 +167,7 @@ struct PBResourceMgr {
         {
             std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
             for (const auto &kvb : resourceVector) {
-                auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
+                auto resourceInfo = getFromThriftJsonPayload<typename ResourceT::ResourceInfoType>(kvb);
                 addResourceReplicaIfOwned_(getVersion(kvb), resourceInfo);
             }
         }
@@ -211,7 +212,7 @@ struct PBResourceMgr {
          * need to take that into account
          */
         auto version = getVersion(kvb);
-        auto resourceInfo = deserializeThriftJsonData<typename ResourceT::ResourceInfoType>(kvb, getLogContext());
+        auto resourceInfo = getFromThriftJsonPayload<typename ResourceT::ResourceInfoType>(kvb);
         auto id = getId(resourceInfo);
         std::shared_ptr<ResourceT> resource;
         {
@@ -258,7 +259,7 @@ void VolumeServer::registerHandlers_()
     auto handler = getHandler<ServiceApiHandler>();
     handler->registerKVBMessageHandler(
         typeStr<GetMemberStateMsg>(),
-        KVBThriftJsonHandler<GetMemberStateMsg, GetMemberStateRespMsg>(
+        KVBHandler<GetMemberStateMsg, GetMemberStateRespMsg>(
             [this](std::unique_ptr<GetMemberStateMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 return replica->handleGetMemberStateMsg(std::move(req));
@@ -267,7 +268,7 @@ void VolumeServer::registerHandlers_()
 
     handler->registerKVBMessageHandler(
         typeStr<BecomeLeaderMsg>(),
-        KVBOnewayThriftJsonHandler<BecomeLeaderMsg>(
+        KVBOnewayHandler<BecomeLeaderMsg>(
             [this](std::unique_ptr<BecomeLeaderMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 replica->handleBecomeLeaderMsg(std::move(req));

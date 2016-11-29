@@ -210,7 +210,7 @@ void Service::publishServiceInfomation_()
 
     /* Publish the new service information to service topic */
     KVBinaryData kvb;
-    kvb.data = std::move(payload);
+    kvb.payload = folly::IOBuf::copyBuffer(payload.data(), payload.size());
     setVersion(kvb, f.value());
     payload = serializeToThriftJson<>(kvb, getLogContext());
     coordinationClient_->publishMessage(configtree_constants::TOPIC_SERVICES(),
