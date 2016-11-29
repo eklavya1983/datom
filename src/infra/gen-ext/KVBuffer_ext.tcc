@@ -10,12 +10,12 @@ namespace infra {
 
 #if 0
 template <class T>
-struct KVBinaryDataExt {
-    KVBinaryDataExt(const T& data) {
+struct KVBufferExt {
+    KVBufferExt(const T& data) {
         data_ = data;
     }
 
-    KVBinaryDataExt(const KVBinaryData &kvb)
+    KVBufferExt(const KVBuffer &kvb)
     {
         props_ = kvb.props;
         data_ = deserializeFromThriftJson<T>(kvb.data, ""); 
@@ -39,21 +39,21 @@ struct KVBinaryDataExt {
         props_[key] = folly::to<PropT>(val);
     }
 
-    KVBinaryData toKVBinaryData() {
-        KVBinaryData kvb;
+    KVBuffer toKVBuffer() {
+        KVBuffer kvb;
         kvb.props = props_;
         kvb.data = serializeToThriftJson<T>(data_, "");
         return kvb;
     }
 
-    static KVBinaryDataExt fromKVBinaryDataThriftJson(const std::string &tJson) {
-        KVBinaryData kvb = deserializeFromThriftJson<KVBinaryData>(tJson, "");
-        return KVBinaryDataExt(kvb);
+    static KVBufferExt fromKVBufferThriftJson(const std::string &tJson) {
+        KVBuffer kvb = deserializeFromThriftJson<KVBuffer>(tJson, "");
+        return KVBufferExt(kvb);
     }
 
-    std::string toKVBinaryDataThriftJson() {
-        auto kvb = toKVBinaryData();
-        std::string tJson = serializeToThriftJson<KVBinaryData>(kvb, "");
+    std::string toKVBufferThriftJson() {
+        auto kvb = toKVBuffer();
+        std::string tJson = serializeToThriftJson<KVBuffer>(kvb, "");
         return tJson;
     }
 
@@ -64,49 +64,49 @@ struct KVBinaryDataExt {
 #endif
 
 template <class T>
-void setProp(KVBinaryData &kvb, const std::string &key, const T &val)
+void setProp(KVBuffer &kvb, const std::string &key, const T &val)
 {
     kvb.props[key] = folly::to<std::string>(val);
 }
 
 template <class T>
-T getProp(const KVBinaryData &kvb, const std::string &key)
+T getProp(const KVBuffer &kvb, const std::string &key)
 {
     return folly::to<T>(kvb.props.at(key));
 }
 
-inline void setVersion(KVBinaryData &kvb, int64_t version)
+inline void setVersion(KVBuffer &kvb, int64_t version)
 {
     setProp<int64_t>(kvb, commontypes_constants::KEY_VERSION(), version);
 }
 
-inline int64_t getVersion(const KVBinaryData &kvb)
+inline int64_t getVersion(const KVBuffer &kvb)
 {
     return getProp<int64_t>(kvb, commontypes_constants::KEY_VERSION());
 }
 
-inline void setType(KVBinaryData &kvb, const std::string &type)
+inline void setType(KVBuffer &kvb, const std::string &type)
 {
     setProp<std::string>(kvb, commontypes_constants::KEY_TYPE(), type);
 }
 
-inline std::string getType(const KVBinaryData &kvb)
+inline std::string getType(const KVBuffer &kvb)
 {
     return getProp<std::string>(kvb, commontypes_constants::KEY_TYPE());
 }
 
-inline void setId(KVBinaryData &kvb, const std::string &id)
+inline void setId(KVBuffer &kvb, const std::string &id)
 {
     setProp<std::string>(kvb, commontypes_constants::KEY_ID(), id);
 }
 
-inline std::string getId(const KVBinaryData &kvb)
+inline std::string getId(const KVBuffer &kvb)
 {
     return getProp<std::string>(kvb, commontypes_constants::KEY_ID());
 }
 
 template <class T>
-inline void setAsThriftJsonPayload(KVBinaryData &kvb, const T &payload)
+inline void setAsThriftJsonPayload(KVBuffer &kvb, const T &payload)
 {
     folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
     apache::thrift::JSONSerializer::serialize<>(payload, &queue);
@@ -114,13 +114,13 @@ inline void setAsThriftJsonPayload(KVBinaryData &kvb, const T &payload)
 }
 
 template <class T>
-inline T getFromThriftJsonPayload(const KVBinaryData &kvb)
+inline T getFromThriftJsonPayload(const KVBuffer &kvb)
 {
     return apache::thrift::JSONSerializer::deserialize<T>(kvb.get_payload().get());
 }
 
 template <class T>
-inline void setAsBinaryPayload(KVBinaryData &kvb, const T &payload)
+inline void setAsBinaryPayload(KVBuffer &kvb, const T &payload)
 {
     folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
     apache::thrift::BinarySerializer::serialize<>(payload, &queue);
@@ -128,7 +128,7 @@ inline void setAsBinaryPayload(KVBinaryData &kvb, const T &payload)
 }
 
 template <class T>
-inline T getFromBinaryPayload(const KVBinaryData &kvb)
+inline T getFromBinaryPayload(const KVBuffer &kvb)
 {
     return apache::thrift::BinarySerializer::deserialize<T>(kvb.get_payload().get());
 }

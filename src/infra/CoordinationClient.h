@@ -12,7 +12,7 @@ struct Unit;
 
 namespace infra {
 
-class KVBinaryData;
+class KVBuffer;
 enum class Status;
 
 
@@ -21,10 +21,10 @@ struct CoordinationClient {
     using WatchCb = std::function<void(const std::string&)>;
 
     virtual void init() = 0;
-    virtual folly::Future<KVBinaryData> get(const std::string &key) = 0;
+    virtual folly::Future<KVBuffer> get(const std::string &key) = 0;
     virtual folly::Future<std::vector<std::string>> getChildrenSimple(const std::string &key,
                                                                       const WatchCb &watchCb=nullptr) = 0;
-    virtual std::vector<KVBinaryData> getChildrenSync(const std::string &key) = 0;
+    virtual std::vector<KVBuffer> getChildrenSync(const std::string &key) = 0;
     virtual folly::Future<std::string> create(const std::string &key, const std::string &value) = 0;
     virtual folly::Future<std::string> createIncludingAncestors(const std::string &key,
                                                                 const std::string &value) = 0;

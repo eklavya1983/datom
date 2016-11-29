@@ -19,7 +19,7 @@
 #include <folly/io/async/EventBase.h>
 #include <infra/PBMember.h>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/volumeapi_types.h>
 #include <volumeserver/VolumeHandleIf.h>
 
@@ -49,7 +49,7 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
     {
     }
 
-    virtual void applyUpdate(const KVBinaryData &kvb)
+    virtual void applyUpdate(const KVBuffer &kvb)
     {
     }
 
@@ -90,7 +90,7 @@ struct PBResourceReplica {
     virtual void init()
     {
     }
-    virtual void applyUpdate(const KVBinaryData &kvb)
+    virtual void applyUpdate(const KVBuffer &kvb)
     {
         DCHECK(!"Unimplemented");
     }
@@ -151,7 +151,7 @@ struct PBResourceMgr {
 
         /* Pull resource table from configdb */
         CLog(INFO) << "Pulling resources from configdb";
-        std::vector<KVBinaryData> resourceVector;
+        std::vector<KVBuffer> resourceVector;
         auto resourcesRoot = folly::sformat(
             configtree_constants::PB_SPHERE_RESOURCES_ROOT_PATH_FORMAT(),
             parent_->getDatasphereId(),
@@ -180,7 +180,7 @@ struct PBResourceMgr {
         subscribeToTopic(resourcesTopic,
                          [this](int64_t sequenceNo, const std::string& payload) {
                             CLog(INFO) << "Received message: " << sequenceNo;
-                            auto kvb = deserializeFromThriftJson<KVBinaryData>(payload,
+                            auto kvb = deserializeFromThriftJson<KVBuffer>(payload,
                                                                                getLogContext());
                              handleResourceConfigTableUpdate_(kvb);
                          });
@@ -206,7 +206,7 @@ struct PBResourceMgr {
         }
     }
 
-    virtual void handleResourceConfigTableUpdate_(const KVBinaryData &kvb)
+    virtual void handleResourceConfigTableUpdate_(const KVBuffer &kvb)
     {
         /* NOTE: We are deserializing without knowing what the update type is.  We
          * need to take that into account

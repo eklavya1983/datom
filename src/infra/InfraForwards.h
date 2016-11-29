@@ -26,7 +26,7 @@ using VoidFuture = folly::Future<folly::Unit>;
 struct CoordinationClient;
 struct ConnectionCache;
 class ServiceInfo;
-class KVBinaryData;
+class KVBuffer;
 
 namespace at = apache::thrift;
 namespace ata = apache::thrift::async;

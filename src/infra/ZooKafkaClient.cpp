@@ -1,7 +1,7 @@
 #include <zookeeper/zookeeper.h>
 #include <infra/ZooKafkaClient.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <chrono>
 #include <thread>
 #include <util/Log.h>
@@ -49,7 +49,7 @@ struct GetChildrenSimpleCtx {
 };
 
 struct GetCtx {
-    folly::Promise<KVBinaryData> promise;
+    folly::Promise<KVBuffer> promise;
     std::string key;
 };
 
@@ -110,7 +110,7 @@ static void dataCompletionCb(int rc, const char *value, int value_len,
         LOG(WARNING) << "dataCompletionCb key:" << ctx->key << " error:" << zerror(rc);
         ctx->promise.setException(infra::toStatusException(rc));
     } else {
-        KVBinaryData kvb;
+        KVBuffer kvb;
         setVersion(kvb, stat->version);
         kvb.payload = folly::IOBuf::copyBuffer(value, value_len);
         ctx->promise.setValue(std::move(kvb));
@@ -389,7 +389,7 @@ folly::Future<folly::Unit> ZooKafkaClient::del(const std::string &key,
     return future;
 }
 
-folly::Future<KVBinaryData> ZooKafkaClient::get(const std::string &key)
+folly::Future<KVBuffer> ZooKafkaClient::get(const std::string &key)
 {
     CVLog(2) << "key:" << key;
 
@@ -401,7 +401,7 @@ folly::Future<KVBinaryData> ZooKafkaClient::get(const std::string &key)
     if (rc != ZOK) {
         CLog(WARNING) << "failed to get key: " << key << " error: " << zerror(rc);
         delete ctx;
-        return folly::makeFuture<KVBinaryData>(toStatusException(rc));
+        return folly::makeFuture<KVBuffer>(toStatusException(rc));
     }
     return future;
 }
@@ -437,12 +437,12 @@ ZooKafkaClient::getChildrenSimple(const std::string &key,
 
 #if 0
 // TODO(Rao): Implement this.  Need latest folly to get this working
-folly::Future<std::vector<KVBinaryData>>
+folly::Future<std::vector<KVBuffer>>
 ZooKafkaClient::getChildren(const std::string &key)
 {
     auto f = getChildrenSimple(key);
     f.then([this, key](const std::vector<std::string>& children) {
-           std::vector<folly::Future<KVBinaryData>>fs;
+           std::vector<folly::Future<KVBuffer>>fs;
            for (const auto &c : children) {
               fs.push_back(this->get(folly::sformat("{}/{}", key, c)));
            }
@@ -452,11 +452,11 @@ ZooKafkaClient::getChildren(const std::string &key)
 }
 #endif
 
-std::vector<KVBinaryData> ZooKafkaClient::getChildrenSync(const std::string &key)
+std::vector<KVBuffer> ZooKafkaClient::getChildrenSync(const std::string &key)
 {
     CVLog(2) << "key:" << key;
 
-    std::vector<KVBinaryData> ret;
+    std::vector<KVBuffer> ret;
     auto children  = getChildrenSimple(key).get();
     for (const auto &c : children) {
         auto data = this->get(folly::sformat("{}/{}", key, c)).get();

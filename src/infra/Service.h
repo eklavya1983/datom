@@ -14,10 +14,10 @@ class TNonblockingServer;
 namespace infra {
 
 struct ServiceApiHandler : ServiceApiSvIf {
-    using KVBMessageHandler = std::function<folly::Future<std::unique_ptr<KVBinaryData>> (std::unique_ptr<KVBinaryData>)>;
+    using KVBMessageHandler = std::function<folly::Future<std::unique_ptr<KVBuffer>> (std::unique_ptr<KVBuffer>)>;
     void getModuleState(std::string& _return,
                         std::unique_ptr<std::map<std::string, std::string>> arguments) override;
-    folly::Future<std::unique_ptr<KVBinaryData>> future_handleKVBMessage(std::unique_ptr<KVBinaryData> message) override;
+    folly::Future<std::unique_ptr<KVBuffer>> future_handleKVBMessage(std::unique_ptr<KVBuffer> message) override;
 
     void registerKVBMessageHandler(const std::string &type, const KVBMessageHandler &handler);
 

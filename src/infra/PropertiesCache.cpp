@@ -3,7 +3,7 @@
 #include <infra/Serializer.tcc>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
 #include <infra/CoordinationClient.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 
 
 namespace infra {

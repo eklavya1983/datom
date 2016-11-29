@@ -66,7 +66,7 @@ struct ConnectionCache {
     ConnectionCache operator=(const ConnectionCache&) = delete;
 
     folly::Future<std::shared_ptr<at::HeaderClientChannel>>
-        updateConnection_(const KVBinaryData &kvb, bool createIfMissing);
+        updateConnection_(const KVBuffer &kvb, bool createIfMissing);
 
     std::string                                                     logContext_;
     ModuleProvider                                                  *provider_;

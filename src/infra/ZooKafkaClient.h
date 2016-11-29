@@ -48,14 +48,14 @@ struct ZooKafkaClient : CoordinationClient {
                                const int &version) override;
     folly::Future<folly::Unit> del(const std::string &key,
                                    const int &version) override;
-    folly::Future<KVBinaryData> get(const std::string &key) override;
+    folly::Future<KVBuffer> get(const std::string &key) override;
     folly::Future<std::vector<std::string>>
         getChildrenSimple(const std::string &key,
                           const WatchCb &watchCb=nullptr) override;
 #if 0
-    folly::Future<std::vector<KVBinaryData>> getChildren(const std::string &key) override;
+    folly::Future<std::vector<KVBuffer>> getChildren(const std::string &key) override;
 #endif
-    std::vector<KVBinaryData> getChildrenSync(const std::string &key) override;
+    std::vector<KVBuffer> getChildrenSync(const std::string &key) override;
 #if 0
     folly::Future<std::string> put(const std::string &key,
                                    const std::string &value) override;

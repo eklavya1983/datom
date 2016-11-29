@@ -1,6 +1,6 @@
 #include <infra/ZooKafkaClient.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <gtest/gtest.h>
 #include <gflags/gflags.h>
 #include <folly/Format.h>
@@ -71,10 +71,10 @@ TEST(ZooKafkaClient, basic_ops)
     auto children = client.getChildrenSync("/services");
     ASSERT_EQ(children.size(), 2ull);
     auto itr = std::find_if(children.begin(), children.end(),
-                 [](const infra::KVBinaryData &kvb) { return getId(kvb) == "service1";});
+                 [](const infra::KVBuffer &kvb) { return getId(kvb) == "service1";});
     ASSERT_TRUE(itr != children.end());
     itr = std::find_if(children.begin(), children.end(),
-                       [](const infra::KVBinaryData &kvb) { return getId(kvb) == "service2";});
+                       [](const infra::KVBuffer &kvb) { return getId(kvb) == "service2";});
     ASSERT_TRUE(itr != children.end());
 
     /* Create children with watch test */

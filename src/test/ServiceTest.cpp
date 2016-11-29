@@ -17,7 +17,7 @@
 #include <infra/ZooKafkaClient.h>
 #include <configservice/ConfigService.h>
 #include <volumeserver/VolumeServer.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/service_types.tcc>
 #include <infra/MessageUtils.tcc>
 
@@ -146,7 +146,7 @@ TEST(ServiceTest, connection_up_down) {
     auto handler2 = service2->getHandler<ServiceApiHandler>();
     handler2->registerKVBMessageHandler(
         "PingMsg",
-        [](std::unique_ptr<KVBinaryData> kvb) {
+        [](std::unique_ptr<KVBuffer> kvb) {
             std::string req = getProp<std::string>(*kvb, "request");
             if (req == "ping") {
                 setProp<std::string>(*kvb, "response", "pong");
@@ -157,7 +157,7 @@ TEST(ServiceTest, connection_up_down) {
                  getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
                  get();
 
-    KVBinaryData reqKvb;
+    KVBuffer reqKvb;
     setType(reqKvb, "PingMsg");
     setProp(reqKvb, "request", "ping");
     auto respF = svc2Client->future_handleKVBMessage(reqKvb);

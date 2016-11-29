@@ -54,8 +54,8 @@ const string KEY_TYPE                           = "type"
 const string KEY_ID				= "id"
 
 typedef binary (cpp.type = "std::unique_ptr<folly::IOBuf>") InfraBuffer 
-/* Holds binary data with some properties.  Typical properties include type, version, etc. */
-struct KVBinaryData {
+/* Holds buffer with some properties.  Typical properties include type, version, etc. */
+struct KVBuffer {
 	1: map<string, string>  props;
 	2: InfraBuffer 		payload;
 }

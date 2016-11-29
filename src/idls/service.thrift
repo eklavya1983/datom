@@ -4,5 +4,5 @@ namespace cpp infra
 
 service ServiceApi {
 	string getModuleState(1: map<string, string> arguments)
-	commontypes.KVBinaryData handleKVBMessage(1: commontypes.KVBinaryData message)
+	commontypes.KVBuffer handleKVBMessage(1: commontypes.KVBuffer message)
 }

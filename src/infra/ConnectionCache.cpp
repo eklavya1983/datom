@@ -2,7 +2,7 @@
 #include <folly/Format.h>
 #include <thrift/lib/cpp2/async/HeaderClientChannel.h>
 #include <infra/gen/gen-cpp2/commontypes_types.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/configtree_types.h>
 #include <infra/ConnectionCache.h>
 #include <infra/ModuleProvider.h>
@@ -81,7 +81,7 @@ void ConnectionCache::init()
 {
     /* Register to receive service updates */
     auto f = [this](int64_t sequenceNo, const std::string &payload) {
-        auto kvb = deserializeFromThriftJson<KVBinaryData>(payload, getLogContext());
+        auto kvb = deserializeFromThriftJson<KVBuffer>(payload, getLogContext());
         CVLog(2) << "Connection update:" << toJsonString(kvb);
         updateConnection_(kvb, false);
     };
@@ -115,7 +115,7 @@ ConnectionCache::getHeaderClientChannel(const std::string &serviceId)
         << " will try configdb for key: " << serviceEntryKey;
     return provider_->getCoordinationClient()
         ->get(serviceEntryKey)
-        .then([this](const KVBinaryData &data) {
+        .then([this](const KVBuffer &data) {
               CVLog(2) << "Fetched service entry:" << toJsonString(data);
               return updateConnection_(data, true);
         });
@@ -140,7 +140,7 @@ bool ConnectionCache::existsInCache(const std::string &serviceId)
 }
 
 folly::Future<std::shared_ptr<at::HeaderClientChannel>>
-ConnectionCache::updateConnection_(const KVBinaryData &kvb, bool createIfMissing)
+ConnectionCache::updateConnection_(const KVBuffer &kvb, bool createIfMissing)
 {
     auto serviceInfo = getFromThriftJsonPayload<ServiceInfo>(kvb);
     auto version = getVersion(kvb);

@@ -5,7 +5,7 @@
 #include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/ServiceServer.h>
 #include <infra/ConnectionCache.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/StatusException.h>
 #include <infra/gen/gen-cpp2/status_types.h>
 #include <infra/gen/gen-cpp2/commontypes_types.tcc>
@@ -18,8 +18,8 @@ void ServiceApiHandler::getModuleState(std::string& _return,
     _return = "ok";
 }
 
-folly::Future<std::unique_ptr<KVBinaryData>>
-ServiceApiHandler::future_handleKVBMessage(std::unique_ptr<KVBinaryData> message)
+folly::Future<std::unique_ptr<KVBuffer>>
+ServiceApiHandler::future_handleKVBMessage(std::unique_ptr<KVBuffer> message)
 {
     auto type = getType(*message);
     auto itr = kvbMessageHandlers_.find(type);
@@ -209,7 +209,7 @@ void Service::publishServiceInfomation_()
     f.wait();
 
     /* Publish the new service information to service topic */
-    KVBinaryData kvb;
+    KVBuffer kvb;
     kvb.payload = folly::IOBuf::copyBuffer(payload.data(), payload.size());
     setVersion(kvb, f.value());
     payload = serializeToThriftJson<>(kvb, getLogContext());

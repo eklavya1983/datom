@@ -16,7 +16,7 @@
 #include <infra/LockHelper.tcc>
 
 #include <folly/io/async/EventBase.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 
 namespace config {
 
@@ -156,7 +156,7 @@ struct PBResourceSphereConfigMgr {
     {
 
         /* Publish the resource information to resources topic */
-        KVBinaryData kvb;
+        KVBuffer kvb;
         setVersion(kvb, version);
         setAsThriftJsonPayload<ResourceT>(kvb, info);
 

@@ -3,7 +3,7 @@
 #include <memory>
 #include <folly/futures/Future.h>
 #include <infra/ConnectionCache.h>
-#include <infra/gen-ext/KVBinaryData_ext.tcc>
+#include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/ServiceApi.h>
 #include <infra/typestr.h>
 
@@ -14,7 +14,7 @@ folly::Future<RespT> sendKVBMessage(ConnectionCache *connMgr,
                                     const std::string &id,
                                     const ReqT& req)
 {
-    auto reqKvb = std::make_unique<KVBinaryData>();
+    auto reqKvb = std::make_unique<KVBuffer>();
     setType(*reqKvb, typeStr<ReqT>());
     setAsBinaryPayload<ReqT>(*reqKvb, req);
 
@@ -24,7 +24,7 @@ folly::Future<RespT> sendKVBMessage(ConnectionCache *connMgr,
         .then([reqKvb=std::move(reqKvb)](const std::shared_ptr<ServiceApiAsyncClient>& client) {
             return client 
                     ->future_handleKVBMessage(*reqKvb)
-                    .then([](const KVBinaryData &respKvb) {
+                    .then([](const KVBuffer &respKvb) {
                           return getFromBinaryPayload<RespT>(respKvb);
                     });
         });
@@ -36,7 +36,7 @@ folly::Future<folly::Unit> sendKVBMessage(ConnectionCache *connMgr,
                                           const std::string &id,
                                           const ReqT& req)
 {
-    auto reqKvb = std::make_unique<KVBinaryData>();
+    auto reqKvb = std::make_unique<KVBuffer>();
     setType(*reqKvb, typeStr<ReqT>());
     setAsBinaryPayload<ReqT>(*reqKvb, req);
     auto f = 
@@ -45,7 +45,7 @@ folly::Future<folly::Unit> sendKVBMessage(ConnectionCache *connMgr,
         .then([reqKvb=std::move(reqKvb)](const std::shared_ptr<ServiceApiAsyncClient>& client) {
             return client 
                     ->future_handleKVBMessage(*reqKvb)
-                    .then([](const KVBinaryData &) {
+                    .then([](const KVBuffer &) {
                           return;
                     });
         });
@@ -59,14 +59,14 @@ struct KVBHandler{
         : handler_(handler)
     {
     }
-    folly::Future<std::unique_ptr<KVBinaryData>> operator()(std::unique_ptr<KVBinaryData> kvb)
+    folly::Future<std::unique_ptr<KVBuffer>> operator()(std::unique_ptr<KVBuffer> kvb)
     {
         std::unique_ptr<ReqT> req(new ReqT);
         *req = getFromBinaryPayload<ReqT>(*kvb);
         return
             handler_(std::move(req))
             .then([](std::unique_ptr<RespT> resp) {
-                std::unique_ptr<KVBinaryData> retKvb (new KVBinaryData);
+                std::unique_ptr<KVBuffer> retKvb (new KVBuffer);
                 setAsBinaryPayload<RespT>(*retKvb, *resp);
                 return retKvb;
             });
@@ -83,12 +83,12 @@ struct KVBOnewayHandler{
         : handler_(handler)
     {
     }
-    folly::Future<std::unique_ptr<KVBinaryData>> operator()(std::unique_ptr<KVBinaryData> kvb)
+    folly::Future<std::unique_ptr<KVBuffer>> operator()(std::unique_ptr<KVBuffer> kvb)
     {
         std::unique_ptr<ReqT> req(new ReqT);
         *req = getFromBinaryPayload<ReqT>(*kvb);
         handler_(std::move(req));
-        return folly::makeFuture(std::make_unique<KVBinaryData>());
+        return folly::makeFuture(std::make_unique<KVBuffer>());
     }
 
  private:
