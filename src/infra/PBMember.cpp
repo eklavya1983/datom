@@ -35,6 +35,12 @@ namespace infra {
 
 const int32_t PBMember::GROUPWATCH_INTERVAL_MS = 10000;
 
+PBMember::LeaderCtx::LeaderCtx()
+{
+    opId = commontypes_constants::INVALID_VALUE();
+    commitId = commontypes_constants::INVALID_VALUE();
+}
+
 PBMember::PBMember(const std::string &logCtx,
                    folly::EventBase *eb,
                    ModuleProvider *provider,
@@ -385,6 +391,84 @@ bool PBMember::hasQuorumMemberCount_(const std::vector<std::string> &children)
 {
     auto members = parseMembers_(children);
     return members.size() >= quorum_;
+}
+
+PBMember::LeaderCtx::PeerInfo* PBMember::getPeerRef_(const std::string &id)
+{
+    for (auto &peer : leaderCtx_->peers) {
+        if (peer.id == id) {
+            return &peer;
+        }
+    }
+    return nullptr;
+}
+
+std::vector<PBMember::LeaderCtx::PeerInfo> PBMember::getWritablePeers_()
+{
+    std::vector<PBMember::LeaderCtx::PeerInfo> peers;
+    for (const auto &peer : leaderCtx_->peers) {
+        if (peer.state == PBMemberState::FOLLOWER_FUNCTIONAL ||
+            peer.state == PBMemberState::FOLLOWER_SYNCING) {
+            peers.push_back(peer);
+        }
+    }
+    return peers;
+}
+
+folly::Future<folly::Unit> PBMember::writeToPeers_(const std::string &type,
+                                                   std::unique_ptr<folly::IOBuf> buffer) {
+    struct WriteCtx {
+        folly::Promise<folly::Unit> promise;
+        uint32_t nAcked {0};
+        uint32_t nSuccess {0};
+        uint32_t nPeers;
+    };
+
+    auto connMgr = provider_->getConnectionCache();
+    auto peers = getWritablePeers_();
+    auto writeCtx = std::make_shared<WriteCtx>();
+    writeCtx->nPeers = peers.size();
+    for (const auto &peer : peers) {
+        auto reqKvb = std::make_unique<KVBuffer>();
+        setType(*reqKvb, type);
+        reqKvb->payload = buffer->clone();
+        // TODO(Rao): Set timeout
+        auto f = 
+            connMgr
+            ->getAsyncClient<ServiceApiAsyncClient>(peer.id)
+            .then([reqKvb=std::move(reqKvb)](const std::shared_ptr<ServiceApiAsyncClient>& client) {
+                return client->future_handleKVBMessage(*reqKvb);
+            })
+            .via(eb_)
+            .then([writeCtx, peerPrior=peer, this](const folly::Try<KVBuffer> &respTry) {
+                  DCHECK(eb_->isInEventBaseThread());
+                  // TODO(Rao):
+                  // 1. handle when we aren't leader anymore
+                  // 2. Trace information
+                  // 3: Handling cases when functional members count < quorum
+                  // etc.
+                  auto peer = getPeerRef_(peerPrior.id);
+                  writeCtx->nAcked++;
+                  if (respTry.hasValue()) {
+                      writeCtx->nSuccess++;
+                      if (writeCtx->nSuccess == quorum_ -1 &&
+                          !writeCtx->promise.isFulfilled()) {
+                          writeCtx->promise.setValue(folly::Unit());
+                      }
+                  } else {
+                      if ((peer->state == PBMemberState::FOLLOWER_FUNCTIONAL ||
+                           peer->state == PBMemberState::FOLLOWER_SYNCING) &&
+                          peer->version == peerPrior.version) {
+                          peer->state = PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP;
+                      }
+                      if (writeCtx->nAcked == writeCtx->nPeers &&
+                          !writeCtx->promise.isFulfilled()) {
+                          writeCtx->promise.setException(respTry.exception());
+                      }
+                  }
+            });
+    }
+    return writeCtx->promise.getFuture();
 }
 
 }  // namespace infra

@@ -18,12 +18,16 @@
 
 #include <folly/io/async/EventBase.h>
 #include <infra/PBMember.h>
+#include <infra/PBMember.tcc>
 #include <infra/gen/gen-cpp2/configtree_constants.h>
 #include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/volumeapi_types.h>
+#include <infra/gen/gen-cpp2/volumeapi_types.tcc>
 #include <volumeserver/VolumeHandleIf.h>
+#include <volumeserver/VolumeMetaDb.h>
 
 namespace volume {
+
 
 struct VolumeReplica : PBMember, VolumeHandleIf {
     using ResourceInfoType = VolumeInfo;
@@ -45,8 +49,12 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
                        volumeInfo.id),
                    members,
                    provider->getServiceId(),
-                   quorum)
+                   quorum),
+        db_(logCtx,
+            folly::sformat("{}/{}/db", "/temp", volumeInfo.id))
     {
+       // TODO(Rao): Set path based on some base prefix ^^^^^
+        db_.init();
     }
 
     virtual void applyUpdate(const KVBuffer &kvb)
@@ -55,7 +63,6 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
 
     folly::Future<std::unique_ptr<UpdateBlobRespMsg>> updateBlob(std::unique_ptr<UpdateBlobMsg> msg) override
     {
-        return folly::makeFuture(std::make_unique<UpdateBlobRespMsg>());
 #if 0
         return
             chunkClusterHandle
@@ -64,13 +71,27 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
                       volMetaHandle->updateBlobMeta();
                 });
 #endif
+        return folly::makeFuture(std::make_unique<UpdateBlobRespMsg>());
     }
 
-    folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>> updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg) override
+    folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
+    updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg) override
     {
-        return folly::makeFuture(std::make_unique<UpdateBlobMetaRespMsg>());
+        return
+        via(eb_).then([this, msg = std::move(msg)]() mutable {
+            return groupWriteInEb_<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
+                [this](const std::unique_ptr<UpdateBlobMetaMsg> &msg,
+                       const std::unique_ptr<folly::IOBuf> &buffer) {
+                    return db_.updateBlobMeta(msg, buffer);
+                },
+                std::move(msg));
+        });
     }
+
+ protected:
+    VolumeMetaDb                db_;
 };
+
 #if 0
 template<class ParentT, class ResourceInfoT>
 struct PBResourceReplica {

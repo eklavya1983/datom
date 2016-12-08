@@ -235,6 +235,23 @@ struct PBMember {
         return logContext_;
     }
 
+    /**
+     * @brief Leader context.  Used when member is a leader
+     */
+    struct LeaderCtx {
+        LeaderCtx();
+
+        struct PeerInfo {
+            std::string         id;
+            PBMemberState       state;
+            int64_t             version;
+        };
+
+        int64_t                                 opId; 
+        int64_t                                 commitId;
+        std::vector<PeerInfo>                   peers;
+    };
+
     static const int32_t GROUPWATCH_INTERVAL_MS;
 
  protected:
@@ -256,6 +273,15 @@ struct PBMember {
     bool canIBeElector_(const std::vector<std::string> &children);
     bool hasQuorumMemberCount_(const std::vector<std::string> &children);
 
+
+    LeaderCtx::PeerInfo* getPeerRef_(const std::string &id);
+    std::vector<LeaderCtx::PeerInfo> getWritablePeers_();
+    template<class ReqT, class RespT, typename F>
+    folly::Future<std::unique_ptr<RespT>> groupWriteInEb_(F &&localWriteFunc,
+                                                          std::unique_ptr<ReqT> msg);
+    folly::Future<folly::Unit> writeToPeers_(const std::string &type,
+                                             std::unique_ptr<folly::IOBuf> buffer);
+
     std::string                         logContext_;
     folly::EventBase                    *eb_;
     ModuleProvider                      *provider_;
@@ -273,7 +299,9 @@ struct PBMember {
      */
     int32_t                             termId_;
     TimePoint                           lastElectionTimepoint_; 
+    int64_t                             opId_;
     int64_t                             commitId_;
+    std::unique_ptr<LeaderCtx>          leaderCtx_;
 };
 
 }  // namespace infra

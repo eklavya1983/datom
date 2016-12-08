@@ -5,6 +5,7 @@ template <class T>
 class Future;
 struct Unit;
 class EventBase;
+class IOBuf;
 }
 
 namespace wangle {

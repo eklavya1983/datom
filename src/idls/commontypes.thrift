@@ -63,3 +63,6 @@ struct KVBuffer {
 struct Properties {
 	1: map<string, string>		props;
 }
+
+typedef binary ChunkId
+const i32 CHUNKID_SIZE = 20

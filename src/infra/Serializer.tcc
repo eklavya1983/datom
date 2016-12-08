@@ -14,6 +14,14 @@ std::string serializeToThriftJson(const PayloadT &payload,
     return ret;
 }
 
+template <class PayloadT>
+std::unique_ptr<folly::IOBuf> serializeToBinary(const PayloadT &payload)
+{
+    folly::IOBufQueue queue(folly::IOBufQueue::cacheChainLength());
+    apache::thrift::BinarySerializer::serialize<>(payload, &queue);
+    return queue.move();
+}
+
 template <>
 inline std::string serializeToThriftJson<folly::Unit>(const folly::Unit &payload,
                                                const std::string &logCtx)
