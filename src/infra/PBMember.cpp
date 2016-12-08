@@ -151,7 +151,11 @@ PBMember::handleGetMemberStateMsg(std::unique_ptr<GetMemberStateMsg> req)
         throwIfInvalidTerm_(req->termId);
 
         auto resp = std::make_unique<GetMemberStateRespMsg>();
+        resp->id = myId_;
         resp->commitId = commitId_;
+        // TODO(Rao): Set version if required
+        resp->version = 0;
+        resp->state = state_;
 
         return resp;
     });
@@ -166,11 +170,40 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
         auto f = acquireLock_(pbapi_constants::PB_LOCKTYPE_LEADER());
         f
         .via(eb_)
-        .then([this]() {
+        .then([this, functionalMembers=req->functionalMembers]() {
             switchState_(PBMemberState::LEADER_BEGIN,
                          "Become leader message");
-            //TODO(Rao): Send a message to tell the group members we have a
-            //funciton group
+            DCHECK(functionalMembers[0].id == myId_ &&
+                   functionalMembers[0].commitId == commitId_);
+            /* Create leader context */
+            leaderCtx_ = std::make_unique<LeaderCtx>();
+            /* Partition leaderCtx_->peers into 
+             * functional members and nonfunctional members 
+             */
+            for (const auto &member : memberIds_) {
+                if (member == myId_) {
+                    continue;
+                }
+                LeaderCtx::PeerInfo peer;
+                peer.id = member;
+                auto itr = std::find_if(functionalMembers.begin(),
+                                        functionalMembers.end(),
+                                        [member](const GetMemberStateRespMsg &resp) {
+                                            return member == resp.id;
+                                        });
+                if (itr != functionalMembers.end()) {
+                    peer.state = itr->state;
+                    peer.version = itr->version;
+                } else {
+                    peer.state = PBMemberState::UNINITIALIZED;
+                    peer.version = commontypes_constants::INVALID_VERSION();
+                }
+                leaderCtx_->peers.push_back(peer);
+            }
+            //TODO(Rao): 
+            // 1. Set opid
+            // 2. Set leader state based on # of members
+            // 3. Send a message to tell the group members we have a funciton group
         })
         .onError([this](folly::exception_wrapper ew) {
             handleError_(Status::STATUS_INVALID, "acquire leader lock");
@@ -179,8 +212,8 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
 }
 
 void
-PBMember::handleElectionResponse(
-    std::vector<std::pair<std::string, GetMemberStateRespMsg>> values)
+PBMember::handleElectionResponse(const std::map<int64_t,
+                                 std::vector<GetMemberStateRespMsg>> &values)
 {
     DCHECK(eb_->isInEventBaseThread());
     DCHECK(state_ == PBMemberState::EC_ELECTION_IN_PROGRESS);
@@ -189,24 +222,16 @@ PBMember::handleElectionResponse(
     /* For now leader is the entity with latest state.  TODO(Rao): This needs to be
      * imporved so that we take term into account as well
      */
-    if (values.size() >= quorum_) {
-        uint32_t maxIdx = 0;
-        for (uint32_t i = 1; i < values.size(); i++) {
-            if (values[i].second.commitId > values[maxIdx].second.commitId) {
-                maxIdx = i;
-            }
-        }
-
+    if (values.size() > 0 && values.begin()->second.size() >= quorum_) {
         lastElectionTimepoint_ = getTimePoint();
 
         removeLock_(pbapi_constants::PB_LOCKTYPE_ELECTOR())
             .via(eb_)
             .then([this,
-                  leader=values[maxIdx].first,
-                  commitId=values[maxIdx].second.commitId]() {
+                  functionalMembers=values.begin()->second]() {
                 switchState_(PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP,
-                             folly::sformat("leader id:{} elected", leader));
-                sendBecomeLeaderMsg_(leader, commitId);
+                             folly::sformat("leader id:{} elected", functionalMembers[0].id));
+                sendBecomeLeaderMsg_(functionalMembers);
             })
             .onError([this](folly::exception_wrapper ew) {
                 handleError_(Status::STATUS_INVALID, "remove lock");
@@ -325,28 +350,29 @@ void PBMember::issueElectionRequest_()
         .via(eb_)
         .then([this, members=memberIds_](
                 const std::vector<folly::Try<GetMemberStateRespMsg>>& tries){
-            std::vector<std::pair<std::string, GetMemberStateRespMsg>> values;
+            std::map<int64_t,
+                    std::vector<GetMemberStateRespMsg>> values;
             for (uint32_t i = 0; i < tries.size(); i++) {
                 if (tries[i].hasValue()) {
-                    values.push_back(std::make_pair(members[i], std::move(tries[i].value())));
+                    auto memberResp = tries[i].value();
+                    values[memberResp.commitId].push_back(memberResp);
                 }
             }
             handleElectionResponse(values);
         });
 }
 
-void PBMember::sendBecomeLeaderMsg_(const std::string &memberId,
-                                    const int64_t &commitId)
+void PBMember::sendBecomeLeaderMsg_(const std::vector<GetMemberStateRespMsg> &functionalMembers)
 {
     DCHECK(eb_->isInEventBaseThread());
     /* Prepare message */
     auto msg = BecomeLeaderMsg();
     msg.resourceId = resourceId_;
     msg.termId = termId_;
-    msg.commitId = commitId;
+    msg.functionalMembers = functionalMembers;
     auto f = sendKVBMessage<BecomeLeaderMsg>(
         provider_->getConnectionCache(),
-        memberId, 
+        functionalMembers[0].id, 
         msg);
     CLog(INFO) << "sent BecomeLeaderMsg " << toJsonString(msg);
     /* schedule groupwatch event to be thrown so that in case leader doesnt
@@ -415,8 +441,8 @@ std::vector<PBMember::LeaderCtx::PeerInfo> PBMember::getWritablePeers_()
     return peers;
 }
 
-folly::Future<folly::Unit> PBMember::writeToPeers_(const std::string &type,
-                                                   std::unique_ptr<folly::IOBuf> buffer) {
+folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
+                                                  std::unique_ptr<folly::IOBuf> buffer) {
     struct WriteCtx {
         folly::Promise<folly::Unit> promise;
         uint32_t nAcked {0};

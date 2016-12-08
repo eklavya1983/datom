@@ -38,6 +38,7 @@ TEST(Datom, pbcluster)
         auto serviceInfo = bringupHelper.generateVolumeServiceInfo(datasphere.id, i);
         configService->addService(serviceInfo);
         serviceInfos.push_back(serviceInfo);
+        NodeRoot(serviceInfo.rootPath).makeNodeRootTree();
     }
 
     auto configClient = std::make_shared<ZooKafkaClient>(serviceInfos[0].id,

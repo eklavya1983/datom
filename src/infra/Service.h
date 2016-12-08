@@ -26,6 +26,19 @@ struct ServiceApiHandler : ServiceApiSvIf {
 };
 
 /**
+ * @brief Encapsulated root file system for Datom node
+ */
+struct NodeRoot {
+    NodeRoot(const std::string &basePath);
+    std::string getVolumesPath();
+    std::string getDataPath();
+    void makeNodeRootTree();
+    void cleanNodeRootTree();
+ protected:
+    std::string basePath_;
+};
+
+/**
  * @brief Base Service class
  */
 struct Service : ModuleProvider {
@@ -43,6 +56,7 @@ struct Service : ModuleProvider {
     virtual void shutdown();
 
     const std::string& getServiceEntryKey() const;
+    NodeRoot* getNodeRoot() override { return &nodeRoot_; }
     std::string getDatasphereId() const override;
     std::string getNodeId() const override;
     std::string getServiceId() const override;
@@ -62,6 +76,8 @@ struct Service : ModuleProvider {
     static Service* newDefaultService(const std::string &logContext,
                                       const ServiceInfo &info,
                                       const std::string &zkServers);
+    static void prepareServiceRoot(const std::string &basePath);
+    static void cleanServiceRoot(const std::string &basePath);
 
  protected:
     virtual void initIOThreadpool_(int nIOThreads);
@@ -72,6 +88,7 @@ struct Service : ModuleProvider {
 
     std::string                                     logContext_;
     ServiceInfo                                     serviceInfo_;
+    NodeRoot                                        nodeRoot_;
     std::string                                     serviceEntryKey_;
     /* client for coordination services */
     std::shared_ptr<CoordinationClient>             coordinationClient_;

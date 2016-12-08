@@ -8,6 +8,7 @@
 #include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/StatusException.h>
 #include <infra/gen/gen-cpp2/status_types.h>
+#include <infra/gen/gen-cpp2/service_constants.h>
 #include <infra/gen/gen-cpp2/commontypes_types.tcc>
 
 namespace infra {
@@ -38,6 +39,34 @@ void ServiceApiHandler::registerKVBMessageHandler(const std::string &type,
     kvbMessageHandlers_[type] = handler;
 }
 
+NodeRoot::NodeRoot(const std::string &basePath)
+    : basePath_(basePath)
+{}
+
+std::string NodeRoot::getVolumesPath()
+{
+    return folly::sformat(service_constants::FS_VOLUMES_PATH(), basePath_);
+}
+
+std::string NodeRoot::getDataPath()
+{
+    return folly::sformat(service_constants::FS_DATA_PATH(), basePath_);
+}
+
+void NodeRoot::makeNodeRootTree()
+{
+    std::system(folly::sformat("mkdir -p {}", basePath_).c_str());
+    /* Create volumes */
+    std::system(folly::sformat("mkdir -p {}", getVolumesPath()).c_str());
+    /* Create data */
+    std::system(folly::sformat("mkdir -p {}", getDataPath()).c_str());
+}
+
+void NodeRoot::cleanNodeRootTree()
+{
+    std::system(folly::sformat("rm -rf {}", basePath_).c_str());
+}
+
 Service* Service::newDefaultService(const std::string &logContext,
                                     const ServiceInfo &info,
                                     const std::string &zkServers)
@@ -52,7 +81,8 @@ Service::Service(const std::string &logContext,
                  const std::shared_ptr<ServerHandler> &handler,
                  const std::shared_ptr<CoordinationClient> &coordinationClient)
     : logContext_(logContext),
-    serviceInfo_(info)
+    serviceInfo_(info),
+    nodeRoot_(info.rootPath)
 {
     coordinationClient_ = coordinationClient;
     connectionCache_ = std::make_shared<ConnectionCache>(logContext_, this);

@@ -213,8 +213,8 @@ struct PBMember {
     void handleGroupWatchEvent(const std::vector<std::string> &children);
     folly::Future<std::unique_ptr<GetMemberStateRespMsg>>
         handleGetMemberStateMsg(std::unique_ptr<GetMemberStateMsg> req);
-    void handleElectionResponse(
-        std::vector<std::pair<std::string, GetMemberStateRespMsg>> values);
+    void handleElectionResponse(const std::map<int64_t,
+                                std::vector<GetMemberStateRespMsg>> &values);
     void handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req);
 
     inline const PBMemberState& getState() const { return state_; }
@@ -252,6 +252,9 @@ struct PBMember {
         std::vector<PeerInfo>                   peers;
     };
 
+    folly::Future<folly::Unit> writeToPeers(const std::string &type,
+                                            std::unique_ptr<folly::IOBuf> buffer);
+
     static const int32_t GROUPWATCH_INTERVAL_MS;
 
  protected:
@@ -267,7 +270,7 @@ struct PBMember {
     folly::Future<folly::Unit> removeLock_(const std::string &lockType);
     folly::Future<int64_t> increaseTerm_();
     void issueElectionRequest_();
-    void sendBecomeLeaderMsg_(const std::string &memberId, const int64_t &commitId);
+    void sendBecomeLeaderMsg_(const std::vector<GetMemberStateRespMsg> &functionalMembers);
 
     bool hasLock_(const std::vector<std::string> &children);
     bool canIBeElector_(const std::vector<std::string> &children);
@@ -279,8 +282,6 @@ struct PBMember {
     template<class ReqT, class RespT, typename F>
     folly::Future<std::unique_ptr<RespT>> groupWriteInEb_(F &&localWriteFunc,
                                                           std::unique_ptr<ReqT> msg);
-    folly::Future<folly::Unit> writeToPeers_(const std::string &type,
-                                             std::unique_ptr<folly::IOBuf> buffer);
 
     std::string                         logContext_;
     folly::EventBase                    *eb_;

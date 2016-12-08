@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdlib>
 #include <exception>
 #include <zookeeper/zookeeper.h>
 #include <testlib/DatomBringupHelper.h>
@@ -38,6 +39,8 @@ void DatomBringupHelper<ConfigServiceT>::stopServices()
 template <class ConfigServiceT>
 void DatomBringupHelper<ConfigServiceT>::cleanStartDatom()
 {
+    std::system("rm -rf /simulation/*");
+
     /* Bringup zookeeper and kafka */
     KafkaRunner_.cleanstart();
 
@@ -93,19 +96,29 @@ void DatomBringupHelper<ConfigServiceT>::addService(const std::string &dataSpher
 }
 
 template <class ConfigServiceT>
-ServiceInfo DatomBringupHelper<ConfigServiceT>::generateVolumeServiceInfo(
+ServiceInfo DatomBringupHelper<ConfigServiceT>::generateServiceInfo(
     const std::string &datasphereId,
-    int nodeIdx) 
+    int nodeIdx,
+    const ServiceType &type) 
 {
     static int basePort = 2085;
     ServiceInfo serviceInfo;
     serviceInfo.dataSphereId = datasphereId;
     serviceInfo.nodeId = folly::sformat("node{}", nodeIdx);
     serviceInfo.id = folly::sformat("service{}", nodeIdx);
-    serviceInfo.type = ServiceType::VOLUME_SERVER;
+    serviceInfo.type = type;
     serviceInfo.ip = "127.0.0.1";
     serviceInfo.port = basePort + nodeIdx*10;
+    serviceInfo.rootPath = folly::sformat("/simulation/datom/{}", serviceInfo.nodeId);
     return serviceInfo;
+}
+
+template <class ConfigServiceT>
+ServiceInfo DatomBringupHelper<ConfigServiceT>::generateVolumeServiceInfo(
+    const std::string &datasphereId,
+    int nodeIdx) 
+{
+    return generateServiceInfo(datasphereId, nodeIdx, ServiceType::VOLUME_SERVER);
 }
 
 template <class ConfigServiceT>

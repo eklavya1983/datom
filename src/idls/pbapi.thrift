@@ -4,22 +4,6 @@ const string PB_LOCK_KEY="LOCK"
 const string PB_LOCKTYPE_ELECTOR="elector"
 const string PB_LOCKTYPE_LEADER="leader"
 
-struct GetMemberStateMsg {
-    1: string		groupType;
-    2: i64		resourceId;
-    3: i32		termId;
-}
-
-struct GetMemberStateRespMsg {
-    1: i64 		commitId;
-}
-
-struct BecomeLeaderMsg {
-    1: i64		resourceId;
-    2: i32		termId;
-    3: i64 		commitId;
-}
-
 /**
  * Possible events
  * Zookeeper watches
@@ -105,4 +89,23 @@ enum PBMemberState {
     LEADER_WAITING_FOR_QUORUM,
     LEADER_FUNCTIONAL,
     LEADER_END
+}
+
+struct GetMemberStateMsg {
+    1: string		groupType;
+    2: i64		resourceId;
+    3: i32		termId;
+}
+
+struct GetMemberStateRespMsg {
+    1: string           id;
+    2: i64 		commitId;
+    3: i64 		version;
+    4: PBMemberState 	state;
+}
+
+struct BecomeLeaderMsg {
+    1: i64		resourceId;
+    2: i32		termId;
+    3: list<GetMemberStateRespMsg> functionalMembers;
 }

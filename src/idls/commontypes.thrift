@@ -21,7 +21,8 @@ struct NodeInfo {
 
 enum ServiceType {
 	VOLUME_SERVER = 1,
-	CLI = 2
+	CLI = 2,
+	TEST
 }
 
 struct ServiceInfo {
@@ -31,6 +32,7 @@ struct ServiceInfo {
 	4: ServiceType			type;
 	5: string 			ip;
 	6: i32				port;
+	7: string 			rootPath;
 }
 
 struct VolumeInfo {

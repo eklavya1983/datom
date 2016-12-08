@@ -51,9 +51,10 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
                    provider->getServiceId(),
                    quorum),
         db_(logCtx,
-            folly::sformat("{}/{}/db", "/temp", volumeInfo.id))
+            folly::sformat("{}/{}_db",
+                           provider->getNodeRoot()->getVolumesPath(),
+                           volumeInfo.id))
     {
-       // TODO(Rao): Set path based on some base prefix ^^^^^
         db_.init();
     }
 

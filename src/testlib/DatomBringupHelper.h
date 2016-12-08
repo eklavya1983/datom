@@ -10,6 +10,7 @@ struct ServiceInfo;
 struct DataSphereInfo;
 struct CoordinationClient;
 struct Service;
+enum class ServiceType;
 }
 
 
@@ -37,9 +38,11 @@ struct DatomBringupHelper {
 
     std::string getLogContext() const { return "DatomBringupHelper"; }
 
+    static infra::ServiceInfo generateServiceInfo(const std::string &datasphereId,
+                                                  int nodeIdx,
+                                                  const infra::ServiceType &type);
     static infra::ServiceInfo generateVolumeServiceInfo(const std::string &datasphereId,
                                                         int nodeIdx);
-
  protected:
     KafkaRunner                                     KafkaRunner_;
     std::shared_ptr<ConfigServiceT>                 configService_;

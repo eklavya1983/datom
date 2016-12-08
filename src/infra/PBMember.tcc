@@ -24,7 +24,7 @@ folly::Future<std::unique_ptr<RespT>> PBMember::groupWriteInEb_(F &&localWriteFu
             /* We expect this then to execute immediately */
             DCHECK(eb_->isInEventBaseThread());
             return 
-                writeToPeers_(typeStr<ReqT>(), std::move(payload))
+                writeToPeers(typeStr<ReqT>(), std::move(payload))
                 .then([resp=std::move(resp)]() mutable {
                       return std::move(resp);
                 });
