@@ -90,13 +90,10 @@ VolumeReplica::notifyLeader_()
     msg.memberId =  myId_;
     msg.memberState = state_;
 
-#if 0
     return sendKVBMessage<AddToGroupMsg, AddToGroupRespMsg>(
         provider_->getConnectionCache(),
         leaderId_,
         msg);
-#endif
-    return folly::makeFuture(std::make_unique<AddToGroupRespMsg>());
 }
 
 void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,

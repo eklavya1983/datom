@@ -237,6 +237,13 @@ void Service::publishServiceInfomation_()
     std::string payload = serializeToThriftJson<>(serviceInfo_, getLogContext());
     auto f = coordinationClient_->set(getServiceEntryKey(), payload, -1);
     f.wait();
+    if (f.hasException()) {
+        CLog(ERROR) << " failed to publish service information at key:"
+            << getServiceEntryKey();
+        /* Rethrow the exception */
+        f.value();
+        return;
+    }
 
     /* Publish the new service information to service topic */
     KVBuffer kvb;
@@ -246,7 +253,9 @@ void Service::publishServiceInfomation_()
     coordinationClient_->publishMessage(configtree_constants::TOPIC_SERVICES(),
                                         payload);
 
-    CLog(INFO) << "Published service information to ConfigDb";
+    CLog(INFO) << "Published service information to ConfigDb at key:"
+        << getServiceEntryKey()
+        << " topic:" << configtree_constants::TOPIC_SERVICES();
 }
 
 }  // namespace infra

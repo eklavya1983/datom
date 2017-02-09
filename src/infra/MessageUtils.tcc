@@ -15,9 +15,9 @@ namespace infra {
  *
  */
 template <class ReqT, class RespT>
-folly::Future<RespT> sendKVBMessage(ConnectionCache *connMgr,
-                                    const std::string &id,
-                                    const ReqT& req)
+folly::Future<std::unique_ptr<RespT>> sendKVBMessage(ConnectionCache *connMgr,
+                                                     const std::string &id,
+                                                     const ReqT& req)
 {
     auto reqKvb = std::make_unique<KVBuffer>();
     setType(*reqKvb, typeStr<ReqT>());
@@ -71,8 +71,7 @@ struct KVBHandler{
     }
     folly::Future<std::unique_ptr<KVBuffer>> operator()(std::unique_ptr<KVBuffer> kvb)
     {
-        std::unique_ptr<ReqT> req(new ReqT);
-        *req = getFromBinaryPayload<ReqT>(*kvb);
+        std::unique_ptr<ReqT> req = getFromBinaryPayload<ReqT>(*kvb);
         return
             handler_(std::move(req))
             .then([](std::unique_ptr<RespT> resp) {
@@ -96,8 +95,7 @@ struct KVBOnewayHandler{
     }
     folly::Future<std::unique_ptr<KVBuffer>> operator()(std::unique_ptr<KVBuffer> kvb)
     {
-        std::unique_ptr<ReqT> req(new ReqT);
-        *req = getFromBinaryPayload<ReqT>(*kvb);
+        std::unique_ptr<ReqT> req = getFromBinaryPayload<ReqT>(*kvb);
         handler_(std::move(req));
         auto retKvb = std::make_unique<KVBuffer>();
         setType(*retKvb, "Unit");

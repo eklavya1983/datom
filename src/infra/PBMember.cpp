@@ -409,7 +409,7 @@ void PBMember::issueElectionRequest_()
     msg.termId = termId_;
     msg.resourceId =  resourceId_;
 
-    std::vector<folly::Future<GetMemberStateRespMsg>> futures;
+    std::vector<folly::Future<std::unique_ptr<GetMemberStateRespMsg>>> futures;
     /* Send to each child in the group */
     for (const auto &member : memberIds_) {
         auto f = sendKVBMessage<GetMemberStateMsg, GetMemberStateRespMsg>(
@@ -422,12 +422,12 @@ void PBMember::issueElectionRequest_()
     folly::collectAll(futures)
         .via(eb_)
         .then([this, members=memberIds_](
-                const std::vector<folly::Try<GetMemberStateRespMsg>>& tries){
+                const std::vector<folly::Try<std::unique_ptr<GetMemberStateRespMsg>>>& tries){
             std::map<int64_t,
                     std::vector<GetMemberStateRespMsg>> values;
             for (uint32_t i = 0; i < tries.size(); i++) {
                 if (tries[i].hasValue()) {
-                    auto memberResp = tries[i].value();
+                    auto memberResp = *(tries[i].value());
                     values[memberResp.commitId].push_back(memberResp);
                     CLog(INFO) << "Election response:" << toJsonString(memberResp);
                 }

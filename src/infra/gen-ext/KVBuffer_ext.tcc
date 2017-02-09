@@ -128,9 +128,11 @@ inline void setAsBinaryPayload(KVBuffer &kvb, const T &payload)
 }
 
 template <class T>
-inline T getFromBinaryPayload(const KVBuffer &kvb)
+inline std::unique_ptr<T> getFromBinaryPayload(const KVBuffer &kvb)
 {
-    return apache::thrift::BinarySerializer::deserialize<T>(kvb.get_payload().get());
+    auto ret = std::make_unique<T>();
+    apache::thrift::BinarySerializer::deserialize(kvb.get_payload().get(), *ret);
+    return ret;
 }
 
 inline std::string toString(const folly::IOBuf& buf) {

@@ -52,6 +52,7 @@ TEST(ServiceTest, connection_up_down) {
 
     /* Create service1 */
     auto serviceInfo1 = bringupHelper.generateVolumeServiceInfo("sphere1", 1);
+    auto serviceInfo2 = bringupHelper.generateVolumeServiceInfo("sphere1", 2);
     bringupHelper.getConfigService()->addService(serviceInfo1);
     std::unique_ptr<Service> service1 (new FakeService(serviceInfo1));
     service1->init();
@@ -59,17 +60,16 @@ TEST(ServiceTest, connection_up_down) {
 
     TLog << "Try and send a message to service2 which isn't up yet.  It should fail";
     auto f = connCache1
-        ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+        ->getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id);
     f.wait();
     ASSERT_TRUE(f.hasException());
 
     TLog << "Try sendKVBMessage against service2 which isn't up yet.  It should fail";
-    auto sendF = sendKVBMessage<PingMsg, PingRespMsg>(connCache1, "service2", PingMsg());
+    auto sendF = sendKVBMessage<PingMsg, PingRespMsg>(connCache1, serviceInfo2.id, PingMsg());
     sendF.wait();
     ASSERT_TRUE(sendF.hasException());
 
     TLog << "Bring up service2 .  Send a message to service2 now and it should work";
-    auto serviceInfo2 = bringupHelper.generateVolumeServiceInfo("sphere1", 2);
     bringupHelper.getConfigService()->addService(serviceInfo2);
     std::unique_ptr<Service> service2 (new FakeService(serviceInfo2));
     service2->init();
@@ -78,21 +78,21 @@ TEST(ServiceTest, connection_up_down) {
 
     for (int i = 0; i < 2; i++) {
         f = connCache1
-            ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+            ->getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id);
         f.wait();
         ASSERT_TRUE(!f.hasException());
         auto svc2Client = f.get();
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
         ASSERT_TRUE(connCache1->\
-                    getHeaderClientChannelFromCache("service2").get().get() != nullptr);
+                    getHeaderClientChannelFromCache(serviceInfo2.id).get().get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 
     TLog << "Bring down service2.  Sending a message should fail";
     service2.reset();
     f = connCache1
-        ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+        ->getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id);
     f.wait();
     ASSERT_TRUE(!f.hasException());
     auto svc2Client = f.get();
@@ -108,23 +108,23 @@ TEST(ServiceTest, connection_up_down) {
 
     for (int i = 0; i < 2; i++) {
         f = connCache1
-            ->getAsyncClient<infra::ServiceApiAsyncClient>("service2");
+            ->getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id);
         f.wait();
         ASSERT_TRUE(!f.hasException());
         auto svc2Client = f.get();
         auto moduleStateFut = svc2Client->future_getModuleState({});
         moduleStateFut.wait();
         ASSERT_TRUE(connCache1->\
-                    getHeaderClientChannelFromCache("service2").get().get() != nullptr);
+                    getHeaderClientChannelFromCache(serviceInfo2.id).get().get() != nullptr);
         ASSERT_TRUE(!moduleStateFut.hasException()) << moduleStateFut.getTry().exception().what();
     }
 
     TLog << "Two clients sending messages to same service simulataneously";
     svc2Client = connCache1->\
-                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id).\
                  get();
     auto svc2Client2 = connCache1->\
-                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id).\
                  get();
     auto task = [](const std::shared_ptr<infra::ServiceApiAsyncClient> client) {
         for (int i = 0; i < 100; i++) {
@@ -154,7 +154,7 @@ TEST(ServiceTest, connection_up_down) {
             return folly::makeFuture(std::move(kvb));
         });
     svc2Client = connCache1->\
-                 getAsyncClient<infra::ServiceApiAsyncClient>("service2").\
+                 getAsyncClient<infra::ServiceApiAsyncClient>(serviceInfo2.id).\
                  get();
 
     KVBuffer reqKvb;
@@ -181,7 +181,7 @@ TEST(ServiceTest, connection_up_down) {
     setAsBinaryPayload(reqKvb, PingMsg());
     respF = svc2Client->future_handleKVBMessage(reqKvb);
     respKvb = respF.get();
-    getFromBinaryPayload<PingRespMsg>(respKvb);
+    auto pingResp = getFromBinaryPayload<PingRespMsg>(respKvb);
 
     testlib::waitForKeyPress();
     service1->shutdown();
