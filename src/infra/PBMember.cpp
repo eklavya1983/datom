@@ -31,6 +31,14 @@ const char* typeStr<infra::BecomeLeaderMsg>() {
     return "BecomeLeaderMsg";
 }
 template <>
+const char* typeStr<infra::AddToGroupMsg>() {
+    return "AddToGroupMsg";
+}
+template <>
+const char* typeStr<infra::AddToGroupRespMsg>() {
+    return "AddToGroupRespMsg";
+}
+template <>
 const char* typeStr<infra::GroupInfoUpdateMsg>() {
     return "GroupInfoUpdateMsg";
 }
@@ -183,6 +191,7 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
                    functionalMembers[0].commitId == commitId_);
             /* Create leader context */
             leaderCtx_ = std::make_unique<LeaderCtx>();
+            leaderId_ = myId_;
 
             /* Partition leaderCtx_->peers into 
              * functional members and nonfunctional members 
@@ -268,6 +277,17 @@ PBMember::handleElectionResponse(const std::map<int64_t,
 
 }
 
+folly::Future<std::unique_ptr<AddToGroupRespMsg>>
+PBMember::handleAddToGroupMsg(std::unique_ptr<AddToGroupMsg> req)
+{
+    return via(eb_).then([this, req=std::move(req)]() {
+        throwIfInvalidTerm_(req->termId);
+        // TODO(Rao): Implement
+        auto resp = std::make_unique<AddToGroupRespMsg>();
+        return resp;
+    });
+}
+
 void PBMember::handleGroupInfoUpdateMsg(std::unique_ptr<GroupInfoUpdateMsg> req)
 {
     via(eb_).then([this, req=std::move(req)]() {
@@ -281,11 +301,16 @@ void PBMember::handleGroupInfoUpdateMsg(std::unique_ptr<GroupInfoUpdateMsg> req)
         /* If not part of functional group go through sync process */
         auto &functionalMembers = req->functionalMembers;
         if (isFollowerState() &&
-            std::find(myId_,
-                      functionalMembers.begin(),
-                      functionalMembers.end()) == functionalMembers.end()) {
+            std::find_if(functionalMembers.begin(),
+                      functionalMembers.end(),
+                      [this](const GetMemberStateRespMsg &m) { return m.id == myId_; }) == functionalMembers.end()) {
+            leaderId_ = req->leaderId;
             switchState_(PBMemberState::FOLLOWER_SYNCING,
                          "not functional member as per leader");
+            if (termId_ < req->termId) {
+                termId_ = req->termId;
+                CLog(INFO) << " term incremnted to:" << termId_;
+            }
             runSyncProtocol();
         } else {
             CVLog(LCONFIG) << " ignoring " << toJsonString(*req);

@@ -51,7 +51,8 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
 
  protected:
     folly::Future<std::unique_ptr<AddToGroupRespMsg>> notifyLeader_();
-    folly::Future<folly::Unit> pullJournalEntries_(const std::shared_ptr<VoidPromise> &promise);
+    void pullJournalEntries_(const int64_t &pullEndCommitId,
+                             const std::shared_ptr<VoidPromise> &promise);
     void applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg);
     folly::Future<folly::Unit> applyBufferedJournalEntries_();
 

@@ -85,16 +85,21 @@ folly::Future<std::unique_ptr<AddToGroupRespMsg>>
 VolumeReplica::notifyLeader_()
 {
     auto msg = AddToGroupMsg();
+    msg.resourceId = resourceId_;
+    msg.termId = termId_;
     msg.memberId =  myId_;
     msg.memberState = state_;
 
+#if 0
     return sendKVBMessage<AddToGroupMsg, AddToGroupRespMsg>(
         provider_->getConnectionCache(),
         leaderId_,
         msg);
+#endif
+    return folly::makeFuture(std::make_unique<AddToGroupRespMsg>());
 }
 
-void VolumeReplica::pullJournalEntries_(const int64_t pullEndCommitId,
+void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,
                                         const std::shared_ptr<VoidPromise> &promise)
 {
     DCHECK(eb_->isInEventBaseThread());
@@ -110,30 +115,40 @@ void VolumeReplica::pullJournalEntries_(const int64_t pullEndCommitId,
     /* Send request to pull journal log entires */
     auto msg = PullJournalEntriesMsg();
     msg.resourceId =  resourceId_;
+    msg.termId =  termId_;
     msg.fromId = commitId_;
     msg.toId = pullEndCommitId;
-    msg.maxBytesInResp = infra::MAX_PAYLOAD_BYTES;
+    msg.maxBytesInResp = commontypes_constants::MAX_PAYLOAD_BYTES();
     // TODO(rao): set lease time
 
-    CVLog(LREPLICATION) << toJsonString(msg)
+    CVLog(LREPLICATION) << toJsonString(msg);
+#if 0
     auto f = sendKVBMessage<PullJournalEntriesMsg, PullJournalEntriesRespMsg>(
         provider_->getConnectionCache(),
         leaderId_,
         msg);
     f
-    .then([pullEndCommitId, promise](std::unique_ptr<PullJournalEntriesRespMsg> resp) {
-        applyJournalEntries(std::move(resp));
+    .then([this, pullEndCommitId, promise](std::unique_ptr<PullJournalEntriesRespMsg> resp) {
+        applyJournalEntries_(std::move(resp));
         pullJournalEntries_(pullEndCommitId, promise); 
     })
     .onError([promise](folly::exception_wrapper ew){
         promise->setException(ew);
     });
+#endif
 }
 
 void VolumeReplica::applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg)
 {
     DCHECK(eb_->isInEventBaseThread());
     // TODO(Rao): 
+}
+
+folly::Future<folly::Unit> VolumeReplica::applyBufferedJournalEntries_()
+{
+    DCHECK(eb_->isInEventBaseThread());
+    // TODO(Rao): 
+    return folly::makeFuture();
 }
 
 void VolumeReplica::applyUpdate(const KVBuffer &kvb)
@@ -206,6 +221,15 @@ void VolumeServer::registerHandlers_()
             [this](std::unique_ptr<BecomeLeaderMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 replica->handleBecomeLeaderMsg(std::move(req));
+            })
+        );
+
+    handler->registerKVBMessageHandler(
+        typeStr<AddToGroupMsg>(),
+        KVBHandler<AddToGroupMsg, AddToGroupRespMsg>(
+            [this](std::unique_ptr<AddToGroupMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                return replica->handleAddToGroupMsg(std::move(req));
             })
         );
 

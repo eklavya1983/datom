@@ -119,7 +119,10 @@ struct BecomeLeaderMsg {
 * sync protocol
 */
 struct GroupInfoUpdateMsg {
-    1: list<GetMemberStateRespMsg> functionalMembers;
+    1: i64		resourceId;
+    2: i32		termId;
+    3: string    	leaderId;
+    4: list<GetMemberStateRespMsg> functionalMembers;
 }
 
 /**
@@ -127,15 +130,17 @@ struct GroupInfoUpdateMsg {
 * member state leader updates its perspective and takes necessary action
 */
 struct AddToGroupMsg {
-    1: string 		memberId;
+    1: i64		resourceId;
+    2: i32		termId;
+    3: string 		memberId;
     /* State the member currently is in from member's perspective */
-    2: PBMemberState 	memberState;
+    4: PBMemberState 	memberState;
 }
 
 /**
 * @brief Response to AddToGroupMsg
 */
-struct AddToGroupResMsg {
+struct AddToGroupRespMsg {
     /* Membmer will need to sync upto this point before it can become functional */
     1: i64 		syncCommitId;
 }
@@ -144,13 +149,14 @@ struct AddToGroupResMsg {
 * @brief Message to pull journal entries
 */
 struct PullJournalEntriesMsg {
-    1: i64 		resourceId;
-    2: i64  		fromId;
-    3: i64 		toId;
+    1: i64		resourceId;
+    2: i32		termId;
+    4: i64  		fromId;
+    5: i64 		toId;
     /* Maximum bytes to pack in the response.  NOTE: It should >= maximum size of a journal entry */
-    4: i64 		maxBytesInResp;
+    6: i64 		maxBytesInResp;
     /* When set, joural entries [fromId, toId] will be locked for specified seconds */
-    5: i32 		lockTimeInSec;
+    7: i32 		lockTimeInSec;
 }
 
 /**

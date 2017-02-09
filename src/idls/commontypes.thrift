@@ -68,3 +68,4 @@ struct Properties {
 
 typedef binary ChunkId
 const i32 CHUNKID_SIZE = 20
+const i32 MAX_PAYLOAD_BYTES = 2097152 
