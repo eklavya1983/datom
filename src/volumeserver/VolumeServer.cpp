@@ -15,6 +15,7 @@
 #include <infra/typestr.h>
 #include <infra/gen/gen-cpp2/pbapi_types.tcc>
 #include <infra/MessageUtils.tcc>
+#include <infra/PBResourceMgr.tcc>
 
 #include <folly/io/async/EventBase.h>
 #include <infra/PBMember.h>
@@ -29,241 +30,152 @@
 namespace volume {
 
 
-struct VolumeReplica : PBMember, VolumeHandleIf {
-    using ResourceInfoType = VolumeInfo;
 
-    VolumeReplica(const std::string &logCtx,
-                  folly::EventBase *eb,
-                  ModuleProvider *provider,
-                  const std::vector<std::string> &members,
-                  const uint32_t &quorum,
-                  const VolumeInfo &volumeInfo)
-        : PBMember(logCtx,
-                   eb,
-                   provider,
-                   volumeInfo.id,
-                   folly::sformat(
-                       configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
-                       provider->getDatasphereId(),
-                       configtree_constants::PB_VOLUMES_TYPE(),
-                       volumeInfo.id),
-                   members,
-                   provider->getServiceId(),
-                   quorum),
-        db_(logCtx,
-            folly::sformat("{}/{}_db",
-                           provider->getNodeRoot()->getVolumesPath(),
-                           volumeInfo.id))
-    {
-        db_.init();
+VolumeReplica::VolumeReplica(const std::string &logCtx,
+                             folly::EventBase *eb,
+                             ModuleProvider *provider,
+                             const std::vector<std::string> &members,
+                             const uint32_t &quorum,
+                             const VolumeInfo &volumeInfo)
+    : PBMember(logCtx,
+               eb,
+               provider,
+               volumeInfo.id,
+               folly::sformat(
+                   configtree_constants::PB_SPHERE_RESOURCE_ROOT_PATH_FORMAT(),
+                   provider->getDatasphereId(),
+                   configtree_constants::PB_VOLUMES_TYPE(),
+                   volumeInfo.id),
+               members,
+               provider->getServiceId(),
+               quorum),
+    db_(logCtx,
+        folly::sformat("{}/{}_db",
+                       provider->getNodeRoot()->getVolumesPath(),
+                       volumeInfo.id))
+{
+    db_.init();
+}
+
+void VolumeReplica::runSyncProtocol()
+{
+    DCHECK(eb_->isInEventBaseThread());
+
+    auto f = notifyLeader_();
+    f
+    .then([this](std::unique_ptr<AddToGroupRespMsg> resp) {
+        auto promise = std::make_shared<VoidPromise>();
+        auto retFut = promise->getFuture();
+        CLog(INFO) << "Initiating pull of journal entries from [" << commitId_
+            << ", " << resp->syncCommitId << "]";
+        pullJournalEntries_(resp->syncCommitId, promise);
+        return  retFut;
+    })
+    .then([this]() {
+        return applyBufferedJournalEntries_();
+    })
+    .then([this]() {
+          // TODO(Rao): Complete sync operation
+          switchState_(PBMemberState::FOLLOWER_FUNCTIONAL, "Sync completed");
+          notifyLeader_();
+    });
+}
+
+folly::Future<std::unique_ptr<AddToGroupRespMsg>>
+VolumeReplica::notifyLeader_()
+{
+    auto msg = AddToGroupMsg();
+    msg.memberId =  myId_;
+    msg.memberState = state_;
+
+    return sendKVBMessage<AddToGroupMsg, AddToGroupRespMsg>(
+        provider_->getConnectionCache(),
+        leaderId_,
+        msg);
+}
+
+void VolumeReplica::pullJournalEntries_(const int64_t pullEndCommitId,
+                                        const std::shared_ptr<VoidPromise> &promise)
+{
+    DCHECK(eb_->isInEventBaseThread());
+    DCHECK(pullEndCommitId >= commitId_);
+
+    if (commitId_ == pullEndCommitId) {
+        /* Finshed pull */
+        CLog(INFO) << "Finished pulling journal entries";
+        promise->setValue();
+        return;
     }
 
-    virtual void applyUpdate(const KVBuffer &kvb)
-    {
-    }
+    /* Send request to pull journal log entires */
+    auto msg = PullJournalEntriesMsg();
+    msg.resourceId =  resourceId_;
+    msg.fromId = commitId_;
+    msg.toId = pullEndCommitId;
+    msg.maxBytesInResp = infra::MAX_PAYLOAD_BYTES;
+    // TODO(rao): set lease time
 
-    folly::Future<std::unique_ptr<UpdateBlobRespMsg>> updateBlob(std::unique_ptr<UpdateBlobMsg> msg) override
-    {
+    CVLog(LREPLICATION) << toJsonString(msg)
+    auto f = sendKVBMessage<PullJournalEntriesMsg, PullJournalEntriesRespMsg>(
+        provider_->getConnectionCache(),
+        leaderId_,
+        msg);
+    f
+    .then([pullEndCommitId, promise](std::unique_ptr<PullJournalEntriesRespMsg> resp) {
+        applyJournalEntries(std::move(resp));
+        pullJournalEntries_(pullEndCommitId, promise); 
+    })
+    .onError([promise](folly::exception_wrapper ew){
+        promise->setException(ew);
+    });
+}
+
+void VolumeReplica::applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg)
+{
+    DCHECK(eb_->isInEventBaseThread());
+    // TODO(Rao): 
+}
+
+void VolumeReplica::applyUpdate(const KVBuffer &kvb)
+{
+    DCHECK(!"unimplemented");
+}
+
+folly::Future<std::unique_ptr<UpdateBlobRespMsg>> 
+VolumeReplica::updateBlob(std::unique_ptr<UpdateBlobMsg> msg)
+{
 #if 0
-        return
-            chunkClusterHandle
-                ->updateChunks()
-                .then([]() {
-                      volMetaHandle->updateBlobMeta();
-                });
+    return
+        chunkClusterHandle
+            ->updateChunks()
+            .then([]() {
+                  volMetaHandle->updateBlobMeta();
+            });
 #endif
-        return folly::makeFuture(std::make_unique<UpdateBlobRespMsg>());
-    }
+    return folly::makeFuture(std::make_unique<UpdateBlobRespMsg>());
+}
 
-    folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
-    updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg) override
-    {
-        return
-        via(eb_).then([this, msg = std::move(msg)]() mutable {
-            return groupWriteInEb_<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
-                [this](const std::unique_ptr<UpdateBlobMetaMsg> &msg,
-                       const std::unique_ptr<folly::IOBuf> &buffer) {
-                    return db_.updateBlobMeta(msg, buffer);
-                },
-                std::move(msg));
-        });
-    }
+folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
+VolumeReplica::updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg)
+{
+    return
+    via(eb_).then([this, msg = std::move(msg)]() mutable {
+        return groupWriteInEb_<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
+            [this](std::unique_ptr<UpdateBlobMetaMsg> msg,
+                   std::unique_ptr<folly::IOBuf> buffer) {
+                return updateBlobMetaLocal(std::move(msg), std::move(buffer));
+            },
+            std::move(msg));
+    });
+}
 
- protected:
-    VolumeMetaDb                db_;
-};
-
-#if 0
-template<class ParentT, class ResourceInfoT>
-struct PBResourceReplica {
-    using ResourceInfoType = ResourceInfoT;
-
-    PBResourceReplica(const std::string &logCtx,
-                      folly::EventBase *eb,
-                      ParentT *parent,
-                      const int64_t &version,
-                      const std::string &groupKey,
-                      const std::vector<std::string> &members,
-                      const uint32_t &quorum,
-                      const ResourceInfoT& info)
-        : parent_(parent)
-    {
-    }
-    virtual void init()
-    {
-    }
-    virtual void applyUpdate(const KVBuffer &kvb)
-    {
-        DCHECK(!"Unimplemented");
-    }
- protected:
-    ParentT                 *parent_;
-};
-#endif
-
-// TODO(Rao):
-// 1. Subscribe to events for volume table
-// 2. Move to PBResourceMgr file
-template <class ParentT, class ResourceT>
-struct PBResourceMgr {
-    using ResourceTable = std::unordered_map<int64_t, std::shared_ptr<ResourceT>>;
-
-    PBResourceMgr(ParentT* parent, const std::string &id)
-    {
-        parent_ = parent;
-        id_ = id;
-        logContext_ = folly::sformat("{}:PBResourceMgr:{}", parent->getLogContext(), id_);
-    }
-    virtual ~PBResourceMgr() = default;
-    virtual void init()
-    {
-        pullResourceConfigTable_();
-    }
-    virtual void addResource()
-    {
-        CHECK(!"Unimplemented");
-    }
-    virtual std::shared_ptr<ResourceT> getResourceOrThrow(int64_t id)
-    {
-        SharedLock<folly::SharedMutex> l(resourceTableMutex_);
-        auto itr = resourceTable_.find(id);
-        if (itr == resourceTable_.end()) {
-            throw StatusException(Status::STATUS_INVALID_RESOURCE);
-        }
-        return itr->second;
-    }
-
-    const std::string& getLogContext() const {
-        return logContext_;
-    }
-
- protected:
-    virtual void pullResourceConfigTable_()
-    {
-        /* Pull ring table */
-        CLog(INFO) << "Pulling rings from configdb";
-        auto ringsRoot = folly::sformat(configtree_constants::PB_SPHERE_RINGS_ROOT_PATH_FORMAT(),
-                                        parent_->getDatasphereId(),
-                                        id_);
-        auto ringVector = parent_->getCoordinationClient()->getChildrenSync(ringsRoot);
-        for (const auto &kvb : ringVector) {
-            auto id = folly::to<int64_t>(getId(kvb));
-            ringTable_[id] = getFromThriftJsonPayload<RingInfo>(kvb);
-        }
-
-        /* Pull resource table from configdb */
-        CLog(INFO) << "Pulling resources from configdb";
-        std::vector<KVBuffer> resourceVector;
-        auto resourcesRoot = folly::sformat(
-            configtree_constants::PB_SPHERE_RESOURCES_ROOT_PATH_FORMAT(),
-            parent_->getDatasphereId(),
-            id_);
-        try {
-            resourceVector = parent_->getCoordinationClient()->getChildrenSync(resourcesRoot);
-        } catch (const StatusException &e) {
-            if (e.getStatus() != Status::STATUS_INVALID_KEY) {
-                throw;
-            }
-        }
-
-        {
-            std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
-            for (const auto &kvb : resourceVector) {
-                auto resourceInfo = getFromThriftJsonPayload<typename ResourceT::ResourceInfoType>(kvb);
-                addResourceReplicaIfOwned_(getVersion(kvb), resourceInfo);
-            }
-        }
-
-        /* register for updates */
-        auto resourcesTopic = folly::sformat(
-            configtree_constants::TOPIC_PB_SPHERE_RESOURCES(),
-            id_);
-        parent_->getCoordinationClient()->\
-        subscribeToTopic(resourcesTopic,
-                         [this](int64_t sequenceNo, const std::string& payload) {
-                            CLog(INFO) << "Received message: " << sequenceNo;
-                            auto kvb = deserializeFromThriftJson<KVBuffer>(payload,
-                                                                               getLogContext());
-                             handleResourceConfigTableUpdate_(kvb);
-                         });
-    }
-
-    virtual void addResourceReplicaIfOwned_(const int64_t &version,
-                                            const typename ResourceT::ResourceInfoType &resourceInfo)
-    {
-        auto id = getId(resourceInfo);
-        if (isRingMember(ringTable_[resourceInfo.ringId], parent_->getServiceId())) {
-            auto resource = std::make_shared<ResourceT>(logContext_, 
-                                                        parent_->getEventBaseFromPool(),
-                                                        parent_,
-                                                        ringTable_[resourceInfo.ringId].memberIds,
-                                                        2 /* quorum */,
-                                                        resourceInfo);
-            resourceTable_[id] = resource;
-            resource->init();
-            CLog(INFO) << "Added resource:" << id << " version:" << version
-                << toJsonString(resourceInfo);
-        } else {
-            CVLog(1) << "Ignoring unowned resource update id:" << id << " version:" << version;
-        }
-    }
-
-    virtual void handleResourceConfigTableUpdate_(const KVBuffer &kvb)
-    {
-        /* NOTE: We are deserializing without knowing what the update type is.  We
-         * need to take that into account
-         */
-        auto version = getVersion(kvb);
-        auto resourceInfo = getFromThriftJsonPayload<typename ResourceT::ResourceInfoType>(kvb);
-        auto id = getId(resourceInfo);
-        std::shared_ptr<ResourceT> resource;
-        {
-            std::unique_lock<folly::SharedMutex> l(resourceTableMutex_);
-            auto itr = resourceTable_.find(id);
-            if (itr == resourceTable_.end()) {
-                addResourceReplicaIfOwned_(version, resourceInfo);
-                return;
-            } else {
-                resource = itr->second;
-            }
-        }
-
-        /* Apply updates outside the lock */
-        if (resource) {
-            resource->applyUpdate(kvb);
-        } else {
-            CVLog(1) << "Ignoring update as id:" << id << " version:" << version 
-                << " isn't owned";
-        }
-    }
-
-    ParentT                                             *parent_;
-    std::string                                         logContext_;
-    std::string                                         id_;
-    folly::SharedMutex                                  resourceTableMutex_;
-    std::unordered_map<uint64_t, RingInfo>              ringTable_;
-    ResourceTable                                       resourceTable_;
-};
+folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
+VolumeReplica::updateBlobMetaLocal(std::unique_ptr<UpdateBlobMetaMsg> msg,
+                                   std::unique_ptr<folly::IOBuf> buffer)
+{
+    DCHECK(eb_->isInEventBaseThread());
+    return db_.updateBlobMeta(msg, buffer);
+}
 
 void VolumeServer::init()
 {
@@ -294,6 +206,27 @@ void VolumeServer::registerHandlers_()
             [this](std::unique_ptr<BecomeLeaderMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 replica->handleBecomeLeaderMsg(std::move(req));
+            })
+        );
+
+    handler->registerKVBMessageHandler(
+        typeStr<GroupInfoUpdateMsg>(),
+        KVBOnewayHandler<GroupInfoUpdateMsg>(
+            [this](std::unique_ptr<GroupInfoUpdateMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                replica->handleGroupInfoUpdateMsg(std::move(req));
+            })
+        );
+
+    handler->registerKVBMessageHandler(
+        typeStr<UpdateBlobMetaMsg>(),
+        KVBHandler<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
+            [this](std::unique_ptr<UpdateBlobMetaMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                return via(replica->getEventBase())
+                .then([replica, req=std::move(req)]() mutable {
+                    return replica->updateBlobMetaLocal(std::move(req), nullptr);
+                });
             })
         );
 }

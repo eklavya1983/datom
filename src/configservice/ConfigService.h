@@ -46,6 +46,8 @@ struct ConfigService : Service {
     std::vector<infra::ServiceInfo> listServices(const std::string &datasphereId);
     std::vector<infra::VolumeInfo> listVolumes(const std::string &datasphereId);
     std::vector<infra::RingInfo> listVolumeRings(const std::string& datasphere);
+    infra::ServiceInfo getServiceInfo(const std::string &datasphereId,
+                                      const std::string &id);
 
  protected:
     DatasphereConfigTable::iterator getDatasphereOrThrow_(const std::string &id);

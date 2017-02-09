@@ -43,7 +43,7 @@ template <class PayloadT>
 std::string toJsonString(const PayloadT &msg)
 {
     std::string ret;
-    apache::thrift::JSONSerializer::serialize(msg, &ret);
+    apache::thrift::SimpleJSONSerializer::serialize(msg, &ret);
     return ret;
 }
 

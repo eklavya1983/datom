@@ -271,6 +271,12 @@ struct DatasphereConfigMgr {
         return ret;
     }
 
+    infra::ServiceInfo getServiceInfo(const std::string &id)
+    {
+        SharedLock<folly::SharedMutex> l(serviceCacheMutex_);
+        return serviceCache_.at(id);
+    }
+
     std::vector<infra::VolumeInfo> getVolumes()
     {
         auto f = volumesConfigMgr_->getResources();
@@ -458,6 +464,13 @@ ConfigService::listVolumeRings(const std::string& datasphereId)
 {
     auto itr = getDatasphereOrThrow_(datasphereId);    
     return itr->second->getVolumeRings();
+}
+
+infra::ServiceInfo ConfigService::getServiceInfo(const std::string &datasphereId,
+                                                 const std::string &id)
+{
+    auto itr = getDatasphereOrThrow_(datasphereId);    
+    return itr->second->getServiceInfo(id);
 }
 
 void ConfigService::ensureDatasphereMembership_()

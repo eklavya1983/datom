@@ -31,8 +31,16 @@ void DatomBringupHelper<ConfigServiceT>::stopServices()
     if (configService_) {
         configService_.reset();
     }
-    for (auto &kv : services_) {
+    for (auto &kv : volumeServers_) {
         kv.second.reset();
+    }
+
+}
+template <class ConfigServiceT>
+void DatomBringupHelper<ConfigServiceT>::runServices()
+{
+    for (auto &kv : volumeServers_) {
+        kv.second->run(true);
     }
 }
 
@@ -96,6 +104,33 @@ void DatomBringupHelper<ConfigServiceT>::addService(const std::string &dataSpher
 }
 
 template <class ConfigServiceT>
+void DatomBringupHelper<ConfigServiceT>::startService(const std::string &datasphereId,
+                                                      const std::string &serviceId)
+{
+    auto info = configService_->getServiceInfo(datasphereId, serviceId);
+    CLog(INFO) << "Starting service " << info;
+    auto configClient = std::make_shared<ZooKafkaClient>(info.id,
+                                                         "localhost:2181/datom",
+                                                         info.id);
+
+    auto service = std::make_shared<VolumeServer>(info.id,
+                                                  info,
+                                                  std::make_shared<ServiceApiHandler>(),
+                                                  configClient);
+    service->init();
+    if (info.type == ServiceType::VOLUME_SERVER) {
+        auto id = folly::sformat("{}:{}", datasphereId, info.id);
+        volumeServers_[id] = service;
+    }
+}
+
+template <class ConfigServiceT>
+void DatomBringupHelper<ConfigServiceT>::stopService(const std::string &datasphereId,
+                                                     const std::string &serviceId)
+{
+}
+
+template <class ConfigServiceT>
 ServiceInfo DatomBringupHelper<ConfigServiceT>::generateServiceInfo(
     const std::string &datasphereId,
     int nodeIdx,
@@ -105,7 +140,11 @@ ServiceInfo DatomBringupHelper<ConfigServiceT>::generateServiceInfo(
     ServiceInfo serviceInfo;
     serviceInfo.dataSphereId = datasphereId;
     serviceInfo.nodeId = folly::sformat("node{}", nodeIdx);
-    serviceInfo.id = folly::sformat("service{}", nodeIdx);
+    if (type == ServiceType::VOLUME_SERVER) {
+        serviceInfo.id = folly::sformat("volumeserver{}", nodeIdx);
+    } else {
+        serviceInfo.id = folly::sformat("service{}", nodeIdx);
+    }
     serviceInfo.type = type;
     serviceInfo.ip = "127.0.0.1";
     serviceInfo.port = basePort + nodeIdx*10;
@@ -138,6 +177,7 @@ createPrimaryBackupDatasphere(const std::string &datasphereId,
         auto serviceInfo = generateVolumeServiceInfo(datasphereId, i);
         configService_->addService(serviceInfo);
         serviceInfos.push_back(serviceInfo);
+        NodeRoot(serviceInfo.rootPath).makeNodeRootTree();
     }
 
     for (const auto &info : serviceInfos) {
@@ -152,7 +192,7 @@ createPrimaryBackupDatasphere(const std::string &datasphereId,
                                                       configClient);
         service->init();
         auto id = folly::sformat("{}:{}", datasphereId, info.id);
-        services_[id] = service;
+        volumeServers_[id] = service;
     }
 }
 

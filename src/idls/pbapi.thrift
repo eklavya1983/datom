@@ -104,8 +104,61 @@ struct GetMemberStateRespMsg {
     4: PBMemberState 	state;
 }
 
+/**
+* @brief Message sent from elector post election to the leader  to assume leader role
+*/
 struct BecomeLeaderMsg {
     1: i64		resourceId;
     2: i32		termId;
     3: list<GetMemberStateRespMsg> functionalMembers;
 }
+
+/**
+* @brief Message sent for leader to follower to notify current group members.  Based on
+* this message non-functional members will attempt to join back in the group via
+* sync protocol
+*/
+struct GroupInfoUpdateMsg {
+    1: list<GetMemberStateRespMsg> functionalMembers;
+}
+
+/**
+* @brief Message from member to leader to be added into the group.  Depending on reported 
+* member state leader updates its perspective and takes necessary action
+*/
+struct AddToGroupMsg {
+    1: string 		memberId;
+    /* State the member currently is in from member's perspective */
+    2: PBMemberState 	memberState;
+}
+
+/**
+* @brief Response to AddToGroupMsg
+*/
+struct AddToGroupResMsg {
+    /* Membmer will need to sync upto this point before it can become functional */
+    1: i64 		syncCommitId;
+}
+
+/**
+* @brief Message to pull journal entries
+*/
+struct PullJournalEntriesMsg {
+    1: i64 		resourceId;
+    2: i64  		fromId;
+    3: i64 		toId;
+    /* Maximum bytes to pack in the response.  NOTE: It should >= maximum size of a journal entry */
+    4: i64 		maxBytesInResp;
+    /* When set, joural entries [fromId, toId] will be locked for specified seconds */
+    5: i32 		lockTimeInSec;
+}
+
+/**
+* @brief Response for pull journal entries request
+*/
+struct PullJournalEntriesRespMsg {
+    1: i64  		fromId;
+    2: i64 		toId;
+    3: list<binary> 	journalEntries;
+}
+

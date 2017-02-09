@@ -9,6 +9,11 @@
 
 namespace infra {
 
+/**
+ * @brief Send binary message req to service identified id
+ * This version returns future that holds the response
+ *
+ */
 template <class ReqT, class RespT>
 folly::Future<RespT> sendKVBMessage(ConnectionCache *connMgr,
                                     const std::string &id,
@@ -31,6 +36,11 @@ folly::Future<RespT> sendKVBMessage(ConnectionCache *connMgr,
     return f;
 }
 
+/**
+ * @brief Send binary message req to service identified id
+ * This version returns future that doesn't hold the response.  Use this version
+ * If you don't care for response.
+ */
 template <class ReqT>
 folly::Future<folly::Unit> sendKVBMessage(ConnectionCache *connMgr,
                                           const std::string &id,
@@ -68,6 +78,7 @@ struct KVBHandler{
             .then([](std::unique_ptr<RespT> resp) {
                 std::unique_ptr<KVBuffer> retKvb (new KVBuffer);
                 setAsBinaryPayload<RespT>(*retKvb, *resp);
+                setType(*retKvb, typeStr<RespT>());
                 return retKvb;
             });
     }
@@ -88,7 +99,9 @@ struct KVBOnewayHandler{
         std::unique_ptr<ReqT> req(new ReqT);
         *req = getFromBinaryPayload<ReqT>(*kvb);
         handler_(std::move(req));
-        return folly::makeFuture(std::make_unique<KVBuffer>());
+        auto retKvb = std::make_unique<KVBuffer>();
+        setType(*retKvb, "Unit");
+        return folly::makeFuture(std::move(retKvb));
     }
 
  private:

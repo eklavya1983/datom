@@ -17,6 +17,8 @@
 #include <volumeserver/VolumeServer.h>
 #include <infra/MessageUtils.tcc>
 #include <infra/gen/gen-cpp2/commontypes_types.tcc>
+#include <infra/PBResourceMgr.tcc>
+#include <infra/gen/gen-cpp2/volumeapi_types.h>
 
 using namespace apache::thrift::async;
 using namespace apache::thrift;
@@ -24,10 +26,39 @@ using namespace infra;
 using namespace config;
 using namespace volume;
 
+DEFINE_uint64(blobcount, 5, "number of blobs");
+
+void sendUpdate(std::shared_ptr<VolumeReplica> leaderReplica,
+                uint32_t blobStartId,
+                uint32_t blobCnt,
+                bool expectSuccess)
+{
+    for (uint32_t blobId = 0; blobId < blobCnt; blobId++) {
+        auto blobMeta = std::make_unique<UpdateBlobMetaMsg>();
+        blobMeta->blobId = blobStartId + blobId;
+        blobMeta->resourceId = 0;
+        for (uint32_t i = 0; i < 5; i++) {
+            BlobKVPair pair;
+            pair.offset = i;
+            pair.chunkId = folly::sformat("{}",i);
+            blobMeta->chunkList.push_back(pair);
+        }
+        auto updateMetaFut = leaderReplica->updateBlobMeta(std::move(blobMeta));
+        updateMetaFut.wait();
+        if (expectSuccess) {
+            ASSERT_TRUE(updateMetaFut.hasValue());
+        } else {
+            ASSERT_TRUE(updateMetaFut.hasException());
+        }
+    }
+}
+
 TEST(Datom, pbcluster)
 {
     testlib::DatomBringupHelper<ConfigService> bringupHelper;
     testlib::ScopedDatom<ConfigService> d(bringupHelper);
+
+#if 0
     DataSphereInfo datasphere;
     datasphere.id = "datasphere1";
     auto configService = bringupHelper.getConfigService();
@@ -62,14 +93,10 @@ TEST(Datom, pbcluster)
                                                   configClient2);
     service2->init();
     service2->run(true);
-
-#if 0
-    auto f = sendKVBMessage<PingMsg, PingRespMsg>(service->getConnectionCache(),
-                                                  serviceInfos[1].id,
-                                                  PingMsg());
-    f.wait();
-    ASSERT_TRUE(f.hasException());
 #endif
+    bringupHelper.createPrimaryBackupDatasphere("datasphere1", 3);
+    auto configService = bringupHelper.getConfigService();
+    bringupHelper.runServices();
 
     sleep(5);
 
@@ -80,6 +107,32 @@ TEST(Datom, pbcluster)
         auto retVol = configService->addVolume(vol);
         ASSERT_EQ(retVol.id, i);
     }
+
+    // TODO(Rao): Get rid of this sleep
+    sleep(2);
+
+    TLog << "Test1: Send an update and it should succeed";
+    sendUpdate(bringupHelper.getVolumeServer("datasphere1:volumeserver0")->\
+               getReplicaMgr()->getResourceOrThrow(0),
+               0,
+               FLAGS_blobcount,
+               true);
+
+    TLog << "Test2: Bring single peer (volumeserver1) down and it should succeed";
+    bringupHelper.getVolumeServer("datasphere1:volumeserver1").reset();
+    sendUpdate(bringupHelper.getVolumeServer("datasphere1:volumeserver0")->\
+               getReplicaMgr()->getResourceOrThrow(0),
+               0,
+               FLAGS_blobcount,
+               true);
+
+    TLog << "Test3: Bring second peer (volumeserver2) down and it should fail";
+    bringupHelper.getVolumeServer("datasphere1:volumeserver2").reset();
+    sendUpdate(bringupHelper.getVolumeServer("datasphere1:volumeserver0")->\
+               getReplicaMgr()->getResourceOrThrow(0),
+               0,
+               FLAGS_blobcount,
+               false);
 
 #if 0
     DataSphereInfo datasphere;

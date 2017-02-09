@@ -14,3 +14,5 @@
 /* Verbose logs */
 #define LMSG                1
 #define LCONFIG             2
+#define LIO                 3
+#define LREPLICATION        4

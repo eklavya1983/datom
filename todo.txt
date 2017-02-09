@@ -1,10 +1,10 @@
 Now
--Test create volume
--Test publishing volume info
--Create volume server class
---Pull volume table (part of PBVolumeConfigurator)
---Reacts to notifications from pbvolume channel
+-implement journal class that does in memory journal
+-Implement applyJournalEntries_
+-implement applyBufferedJournalEntries_
+-implement pullJournalEntries_
 
+Done
 Infrastructure
 -Clean up log statements in zkadpater
 -DataomException class that takes in status
@@ -32,7 +32,6 @@ CMake
 Epics
 -Authentication webserver, zookeeper
 
-Done
 -code up status codes in thrift
 -Code zookeeper put,get and unit test
 -Create Log macro called CLog (context log)

@@ -12,13 +12,15 @@ folly::Future<std::unique_ptr<RespT>> PBMember::groupWriteInEb_(F &&localWriteFu
 {
     DCHECK(eb_->isInEventBaseThread());
     if (!isLeaderState()) {
+        CLog(WARNING) << "Attempt to write when not a leader.  Current state:"
+            << _PBMemberState_VALUES_TO_NAMES.at(state_);
         throw StatusException(Status::STATUS_INVALID_STATE);
     }
     msg->opId = ++(leaderCtx_->opId);
     msg->commitId = ++(leaderCtx_->commitId);
     auto payload = serializeToBinary(*msg);
     /* First apply the write to primary.  If it succeeds apply to backups */ 
-    auto f = localWriteFunc(msg, payload);
+    auto f = localWriteFunc(std::move(msg), std::move(payload->clone()));
     return f
         .then([this, payload=std::move(payload)](std::unique_ptr<RespT> resp) mutable {
             /* We expect this then to execute immediately */
@@ -30,11 +32,11 @@ folly::Future<std::unique_ptr<RespT>> PBMember::groupWriteInEb_(F &&localWriteFu
                 });
         })
         .onError([this](const StatusException &e) {
-            CHECK(!"Handle error case");
+            CLog(WARNING) << "Group write failed exception:" << e.what();
             return folly::makeFuture<std::unique_ptr<RespT>>(e);
         })
         .onError([this](folly::exception_wrapper ew) {
-            CHECK(!"Handle error case");
+            CLog(WARNING) << "Group write failed exception:" << ew.what().toStdString();
             return folly::makeFuture<std::unique_ptr<RespT>>(ew);
         });
 }

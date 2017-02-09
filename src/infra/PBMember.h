@@ -207,7 +207,7 @@ struct PBMember {
              const std::string &myId,
              const uint32_t &quorum);
     void init();
-    bool amILeader();
+    folly::EventBase* getEventBase() { return eb_; }
 
     /* Events to handle */
     void handleGroupWatchEvent(const std::vector<std::string> &children);
@@ -216,6 +216,78 @@ struct PBMember {
     void handleElectionResponse(const std::map<int64_t,
                                 std::vector<GetMemberStateRespMsg>> &values);
     void handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req);
+    void handleGroupInfoUpdateMsg(std::unique_ptr<GroupInfoUpdateMsg> req);
+
+     /* Methods to override */
+    virtual void runSyncProtocol() = 0;
+
+    inline const PBMemberState& getState() const { return state_; }
+
+    inline bool isFollowerState() const {
+        return state_ > PBMemberState::FOLLOWER_BEGIN &&
+            state_ < PBMemberState::FOLLOWER_END;
+    }
+    inline bool isElectorState() const {
+        return state_ > PBMemberState::EC_BEGIN &&
+            state_ < PBMemberState::EC_END;
+    }
+    inline bool isLeaderState() const {
+        return state_ > PBMemberState::LEADER_BEGIN &&
+            state_ < PBMemberState::LEADER_END;
+    }
+    const std::string& getLogContext() const {
+        return logContext_;
+    }
+
+    /**
+     * @brief Leader context.  Used when member is a leader
+     */
+    struct LeaderCtx {
+        LeaderCtx();
+
+        struct PeerInfo {
+            std::string         id;
+            PBMemberState       state;
+            int64_t             version;
+        };
+
+        int64_t                                 opId; 
+        int64_t                                 commitId;
+        std::vector<PeerInfo>                   peers;
+    };
+
+    folly::Future<folly::Unit> writeToPeers(const std::string &type,
+                                            std::unique_ptr<folly::IOBuf> buffer);
+
+    static const int32_t GROUPWATCH_INTERVAL_MS;
+
+ protected:
+    void handleError_(const Status &status, const std::string &ctx);
+    void watchCb_(const std::string &key);
+    void scheduleGroupWatchEvent_();
+    void throwIfInvalidTerm_(const int32_t &term);
+    
+    void switchState_(PBMemberState newState, const std::string &ctx);
+
+    std::map<uint64_t, std::string> parseMembers_(const std::vector<std::string> &children);
+    folly::Future<std::string> acquireLock_(const std::string &lockType);
+    folly::Future<folly::Unit> removeLock_(const std::string &lockType);
+    folly::Future<int64_t> increaseTerm_();
+    void issueElectionRequest_();
+    void sendBecomeLeaderMsg_(const std::vector<GetMemberStateRespMsg> &functionalMembers);
+
+    bool hasLock_(const std::vector<std::string> &children);
+    bool canIBeElector_(const std::vector<std::string> &children);
+    bool hasQuorumMemberCount_(const std::vector<std::string> &children);
+
+
+    LeaderCtx::PeerInfo* getPeerRef_(const std::string &id);
+    std::vector<LeaderCtx::PeerInfo> getWritablePeers_();
+    template<class ReqT, class RespT, typename F>
+    folly::Future<std::unique_ptr<RespT>> groupWriteInEb_(F &&localWriteFunc,
+                                                          std::unique_ptr<ReqT> msg);
+
+    std::str   /* Methods to override */
 
     inline const PBMemberState& getState() const { return state_; }
 

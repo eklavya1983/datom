@@ -30,6 +30,10 @@ template <>
 const char* typeStr<infra::BecomeLeaderMsg>() {
     return "BecomeLeaderMsg";
 }
+template <>
+const char* typeStr<infra::GroupInfoUpdateMsg>() {
+    return "GroupInfoUpdateMsg";
+}
 
 namespace infra {
 
@@ -75,7 +79,11 @@ void PBMember::init()
      */
     provider_->getCoordinationClient()->getChildrenSimple(groupKey_, watchF);
 
-    /* Create sequential ephemeral node for this member */
+    /* Create sequential ephemeral node for this member to trigger
+     * GrouWatchEvent.  First one to join group is the elector.
+     * This is how we indicate we are up for rest of the
+     * members.
+     */
     auto memberRoot = folly::sformat("{}/{}:", groupKey_, myId_);
     auto f = provider_->getCoordinationClient()->createEphemeral(
         memberRoot,
@@ -95,7 +103,7 @@ void PBMember::handleGroupWatchEvent(const std::vector<std::string> &children)
 {
     DCHECK(eb_->isInEventBaseThread());
 
-    CVLog(1) << "GroupWatchEvent " << toJsonString(children);
+    CVLog(LCONFIG) << "GroupWatchEvent " << toJsonString(children);
 
     switch (state_) {
         case PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP:
@@ -171,12 +179,11 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
         f
         .via(eb_)
         .then([this, functionalMembers=req->functionalMembers]() {
-            switchState_(PBMemberState::LEADER_BEGIN,
-                         "Become leader message");
             DCHECK(functionalMembers[0].id == myId_ &&
                    functionalMembers[0].commitId == commitId_);
             /* Create leader context */
             leaderCtx_ = std::make_unique<LeaderCtx>();
+
             /* Partition leaderCtx_->peers into 
              * functional members and nonfunctional members 
              */
@@ -199,6 +206,14 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
                     peer.version = commontypes_constants::INVALID_VERSION();
                 }
                 leaderCtx_->peers.push_back(peer);
+            }
+
+            if (functionalMembers.size() >= quorum_) {
+                switchState_(PBMemberState::LEADER_FUNCTIONAL,
+                             "Become leader message");
+            } else {
+                switchState_(PBMemberState::LEADER_WAITING_FOR_QUORUM,
+                             "Become leader message");
             }
             //TODO(Rao): 
             // 1. Set opid
@@ -228,9 +243,17 @@ PBMember::handleElectionResponse(const std::map<int64_t,
         removeLock_(pbapi_constants::PB_LOCKTYPE_ELECTOR())
             .via(eb_)
             .then([this,
-                  functionalMembers=values.begin()->second]() {
+                  functionalMembers=values.begin()->second]() mutable {
                 switchState_(PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP,
                              folly::sformat("leader id:{} elected", functionalMembers[0].id));
+                /* Regardless of what state is reported, for now we will
+                 * mark the functionalMembers as functional.  If the member
+                 * isn't functional when a message is sent to it will
+                 * rejected and the member will go to nonfunctional state
+                 */
+                for (auto &member : functionalMembers) {
+                    member.state = PBMemberState::FOLLOWER_FUNCTIONAL;
+                }
                 sendBecomeLeaderMsg_(functionalMembers);
             })
             .onError([this](folly::exception_wrapper ew) {
@@ -243,6 +266,31 @@ PBMember::handleElectionResponse(const std::map<int64_t,
         // election happens again
     }
 
+}
+
+void PBMember::handleGroupInfoUpdateMsg(std::unique_ptr<GroupInfoUpdateMsg> req)
+{
+    via(eb_).then([this, req=std::move(req)]() {
+        throwIfInvalidTerm_(req->termId);
+
+        /* If syncing nothing do */
+        if (state_ == PBMemberState::FOLLOWER_SYNCING) {
+            return;
+        }
+
+        /* If not part of functional group go through sync process */
+        auto &functionalMembers = req->functionalMembers;
+        if (isFollowerState() &&
+            std::find(myId_,
+                      functionalMembers.begin(),
+                      functionalMembers.end()) == functionalMembers.end()) {
+            switchState_(PBMemberState::FOLLOWER_SYNCING,
+                         "not functional member as per leader");
+            runSyncProtocol();
+        } else {
+            CVLog(LCONFIG) << " ignoring " << toJsonString(*req);
+        }
+    });
 }
 
 void PBMember::throwIfInvalidTerm_(const int32_t &term)
@@ -356,6 +404,7 @@ void PBMember::issueElectionRequest_()
                 if (tries[i].hasValue()) {
                     auto memberResp = tries[i].value();
                     values[memberResp.commitId].push_back(memberResp);
+                    CLog(INFO) << "Election response:" << toJsonString(memberResp);
                 }
             }
             handleElectionResponse(values);
@@ -454,6 +503,8 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
     auto peers = getWritablePeers_();
     auto writeCtx = std::make_shared<WriteCtx>();
     writeCtx->nPeers = peers.size();
+    CVLog(LIO) << "created write context:" << writeCtx.get() << " nPeers:" << peers.size();
+
     for (const auto &peer : peers) {
         auto reqKvb = std::make_unique<KVBuffer>();
         setType(*reqKvb, type);
@@ -462,7 +513,10 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
         auto f = 
             connMgr
             ->getAsyncClient<ServiceApiAsyncClient>(peer.id)
-            .then([reqKvb=std::move(reqKvb)](const std::shared_ptr<ServiceApiAsyncClient>& client) {
+            .then([this, reqKvb=std::move(reqKvb),
+                  to=peer.id](const std::shared_ptr<ServiceApiAsyncClient>& client) {
+                CVLog(LIO) << "Sending KVBinary type:" << getType(*reqKvb)
+                        << " to:" << to;
                 return client->future_handleKVBMessage(*reqKvb);
             })
             .via(eb_)
@@ -476,12 +530,17 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
                   auto peer = getPeerRef_(peerPrior.id);
                   writeCtx->nAcked++;
                   if (respTry.hasValue()) {
+                      CVLog(LIO) << "Received KVBinary type:" << getType(respTry.value())
+                          << " from:" << peerPrior.id;
                       writeCtx->nSuccess++;
                       if (writeCtx->nSuccess == quorum_ -1 &&
                           !writeCtx->promise.isFulfilled()) {
                           writeCtx->promise.setValue(folly::Unit());
                       }
                   } else {
+                      CVLog(LIO) << "Received KVBinary exception:"
+                          << respTry.exception().what()
+                          << " from:" << peerPrior.id;
                       if ((peer->state == PBMemberState::FOLLOWER_FUNCTIONAL ||
                            peer->state == PBMemberState::FOLLOWER_SYNCING) &&
                           peer->version == peerPrior.version) {
@@ -492,6 +551,9 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
                           writeCtx->promise.setException(respTry.exception());
                       }
                   }
+                  CVLog(LIO) << "write context:" << writeCtx.get()
+                      << " nAcked:" << writeCtx->nAcked
+                      << " nSuccess:" << writeCtx->nSuccess;
             });
     }
     return writeCtx->promise.getFuture();

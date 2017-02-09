@@ -80,6 +80,8 @@ VolumeMetaDb::updateBlobMeta(const std::unique_ptr<UpdateBlobMetaMsg> &msg,
     datomdb::WriteBatch batch(
         (sizeof(key) + commontypes_constants::CHUNKID_SIZE()) * msg->chunkList.size());
 #endif
+    CVLog(LIO) << "updateBlobMeta:" << toJsonString(*msg);
+
     datomdb::WriteBatch batch;
 
     BlobMetaOffsetKey key;
