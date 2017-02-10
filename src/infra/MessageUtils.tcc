@@ -6,6 +6,7 @@
 #include <infra/gen-ext/KVBuffer_ext.tcc>
 #include <infra/gen/gen-cpp2/ServiceApi.h>
 #include <infra/typestr.h>
+#include <infra/MessageUtils.h>
 
 namespace infra {
 
@@ -72,6 +73,7 @@ struct KVBHandler{
     folly::Future<std::unique_ptr<KVBuffer>> operator()(std::unique_ptr<KVBuffer> kvb)
     {
         std::unique_ptr<ReqT> req = getFromBinaryPayload<ReqT>(*kvb);
+        threadLocalBuffer = std::move(kvb->payload);
         return
             handler_(std::move(req))
             .then([](std::unique_ptr<RespT> resp) {
@@ -81,10 +83,10 @@ struct KVBHandler{
                 return retKvb;
             });
     }
-
  private:
     Handler handler_;
 };
+
 
 template <class ReqT>
 struct KVBOnewayHandler{

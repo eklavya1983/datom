@@ -67,9 +67,8 @@ void VolumeMetaDb::init()
     CLog(INFO) << "Successfully initialized db at path:" << dbPath_;
 }
 
-folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
-VolumeMetaDb::updateBlobMeta(const std::unique_ptr<UpdateBlobMetaMsg> &msg,
-                             const std::unique_ptr<folly::IOBuf> &buffer) 
+infra::Status VolumeMetaDb::applyUpdate(const std::unique_ptr<UpdateBlobMetaMsg> &msg,
+                                        UpdateBlobMetaRespMsg *resp)
 {
     /* TODO(Rao): blob existence checks */
 
@@ -96,11 +95,9 @@ VolumeMetaDb::updateBlobMeta(const std::unique_ptr<UpdateBlobMetaMsg> &msg,
     auto status = db_->Write(datomdb::WriteOptions(), &batch);
     if (!status.ok()) {
         CLog(WARNING) << "Failed to updateBlobMeta" << toJsonString(*msg);
-        return folly::makeFuture<std::unique_ptr<UpdateBlobMetaRespMsg>>(
-            StatusException(Status::STATUS_DB_WRITE_FAILURE));
+        return Status::STATUS_DB_WRITE_FAILURE;
     }
-
-    return folly::makeFuture(std::make_unique<UpdateBlobMetaRespMsg>());
+    return Status::STATUS_OK;
 }
 
 folly::Future<std::unique_ptr<GetBlobMetaRespMsg>>

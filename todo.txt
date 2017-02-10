@@ -1,8 +1,7 @@
 Now
 Sync proto
--implement handler AddToGroupMsg
--implemnent handler PullJournalEntriesMsg
 -implement journal class that does in memory journal
+-implemnent handler PullJournalEntriesMsg
 -Implement applyJournalEntries_
 -implement applyBufferedJournalEntries_
 -implement pullJournalEntries_

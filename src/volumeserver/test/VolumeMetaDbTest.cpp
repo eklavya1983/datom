@@ -3,6 +3,7 @@
 #include <folly/futures/Future.h>
 #include <volumeserver/VolumeMetaDb.h>
 #include <infra/gen/gen-cpp2/VolumeApi.h>
+#include <infra/gen/gen-cpp2/status_types.h>
 
 
 using namespace infra;
@@ -42,8 +43,8 @@ TEST(VolumeMetaDb, updateBlobMeta_basic)
         blobMeta->chunkList.push_back(pair);
     }
     /* Basic write */
-    auto updResp = db.updateBlobMeta(blobMeta, nullptr).get();
-    ASSERT_TRUE(updResp != nullptr);
+    auto status = db.applyUpdate(blobMeta, nullptr);
+    ASSERT_EQ(status, Status::STATUS_OK);
 
     /* Basic read */
     auto getMsg = std::make_unique<GetBlobMetaMsg>();

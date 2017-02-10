@@ -26,6 +26,7 @@
 #include <infra/gen/gen-cpp2/volumeapi_types.tcc>
 #include <volumeserver/VolumeHandleIf.h>
 #include <volumeserver/VolumeMetaDb.h>
+#include <volumeserver/VolumeServer.tcc>
 
 template <>
 const char* typeStr<infra::PullJournalEntriesMsg>() {
@@ -155,7 +156,7 @@ folly::Future<folly::Unit> VolumeReplica::applyBufferedJournalEntries_()
     return folly::makeFuture();
 }
 
-void VolumeReplica::applyUpdate(const KVBuffer &kvb)
+void VolumeReplica::applyResourceUpdate(const KVBuffer &kvb)
 {
     DCHECK(!"unimplemented");
 }
@@ -182,18 +183,11 @@ VolumeReplica::updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg)
         return groupWriteInEb_<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
             [this](std::unique_ptr<UpdateBlobMetaMsg> msg,
                    std::unique_ptr<folly::IOBuf> buffer) {
-                return updateBlobMetaLocal(std::move(msg), std::move(buffer));
+                return handleMetadataWrite<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(
+                    std::move(msg), std::move(buffer));
             },
             std::move(msg));
     });
-}
-
-folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
-VolumeReplica::updateBlobMetaLocal(std::unique_ptr<UpdateBlobMetaMsg> msg,
-                                   std::unique_ptr<folly::IOBuf> buffer)
-{
-    DCHECK(eb_->isInEventBaseThread());
-    return db_.updateBlobMeta(msg, buffer);
 }
 
 void VolumeServer::init()
@@ -252,8 +246,8 @@ void VolumeServer::registerHandlers_()
             [this](std::unique_ptr<UpdateBlobMetaMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 return via(replica->getEventBase())
-                .then([replica, req=std::move(req)]() mutable {
-                    return replica->updateBlobMetaLocal(std::move(req), nullptr);
+                .then([replica, req=std::move(req), buffer=std::move(threadLocalBuffer)]() mutable {
+                    return replica->handleMetadataWrite<UpdateBlobMetaMsg, UpdateBlobMetaRespMsg>(std::move(req), std::move(buffer));
                 });
             })
         );

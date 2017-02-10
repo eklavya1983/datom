@@ -5,6 +5,7 @@
 #include <infra/InfraForwards.h>
 #include <infra/Service.h>
 #include <infra/PBMember.h>
+#include <infra/Journal.h>
 #include <volumeserver/VolumeHandleIf.h>
 #include <folly/SharedMutex.h>
 #include <volumeserver/VolumeMetaDb.h>
@@ -12,6 +13,7 @@
 namespace infra {
 template <class ParentT, class ResourceT>
 struct PBResourceMgr;
+struct Journal;
 }
 
 namespace volume {
@@ -37,18 +39,19 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
     /* Overrides from PBMember */
     void runSyncProtocol() override;
 
-    void applyUpdate(const KVBuffer &kvb);
+    void applyResourceUpdate(const KVBuffer &kvb);
 
+    /* Leader IO methods */
     folly::Future<std::unique_ptr<UpdateBlobRespMsg>>
         updateBlob(std::unique_ptr<UpdateBlobMsg> msg) override;
 
     folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
         updateBlobMeta(std::unique_ptr<UpdateBlobMetaMsg> msg) override;
 
-    folly::Future<std::unique_ptr<UpdateBlobMetaRespMsg>>
-        updateBlobMetaLocal(std::unique_ptr<UpdateBlobMetaMsg> msg,
-                            std::unique_ptr<folly::IOBuf> buffer);
-
+    /* Member IO methods */
+    template<class ReqT, class RespT>
+    folly::Future<std::unique_ptr<RespT>> handleMetadataWrite(std::unique_ptr<ReqT> msg,
+                                                              std::unique_ptr<folly::IOBuf> buffer);
  protected:
     folly::Future<std::unique_ptr<AddToGroupRespMsg>> notifyLeader_();
     void pullJournalEntries_(const int64_t &pullEndCommitId,
@@ -57,6 +60,7 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
     folly::Future<folly::Unit> applyBufferedJournalEntries_();
 
     VolumeMetaDb                db_;
+    Journal                     journal_;
 };
 
 #if 0

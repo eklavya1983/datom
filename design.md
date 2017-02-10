@@ -88,6 +88,8 @@ Bootup
 -Start PBMember bootup sequence
 -If member is follower wait for leader to contact.  On message from leader check if sync is required and go through sync protocol.
 -If member is leader as long as there are nonfunctional members keep sending group info messages so that nonfunctional members can become functional. 
+###Applying writes
+We journal the write first and then apply the write to database.  We do this because it is easy rollback a journal than db.  There is a possiblity for a crach between journal write and db commit. DB write updating the journal entry id along with update helps in detecting when journal and db are out of sync.  During restarts, we need to make sure journal and db are in sync.
 
 #datom cli commands
 

@@ -140,7 +140,7 @@ struct PBResourceMgr {
 
         /* Apply updates outside the lock */
         if (resource) {
-            resource->applyUpdate(kvb);
+            resource->applyResourceUpdate(kvb);
         } else {
             CVLog(1) << "Ignoring update as id:" << id << " version:" << version 
                 << " isn't owned";
