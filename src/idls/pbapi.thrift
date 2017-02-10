@@ -133,8 +133,9 @@ struct AddToGroupMsg {
     1: i64		resourceId;
     2: i32		termId;
     3: string 		memberId;
+    4: i64 		memberVersion;	
     /* State the member currently is in from member's perspective */
-    4: PBMemberState 	memberState;
+    5: PBMemberState 	memberState;
 }
 
 /**

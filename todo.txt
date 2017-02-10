@@ -6,7 +6,8 @@ Sync proto
 -Implement applyJournalEntries_
 -implement applyBufferedJournalEntries_
 -implement pullJournalEntries_
--set leaderid
+-Setting member state in configdb on state changes. Esp leader ones.
+-Setting member version.  Member version is increased every time if goes non-functional
 
 Done
 Infrastructure

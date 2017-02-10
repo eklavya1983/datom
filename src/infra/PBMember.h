@@ -283,11 +283,16 @@ struct PBMember {
     bool hasQuorumMemberCount_(const std::vector<std::string> &children);
 
 
+    // methods available in leader role
     LeaderCtx::PeerInfo* getPeerRef_(const std::string &id);
     std::vector<LeaderCtx::PeerInfo> getWritablePeers_();
     template<class ReqT, class RespT, typename F>
     folly::Future<std::unique_ptr<RespT>> groupWriteInEb_(F &&localWriteFunc,
                                                           std::unique_ptr<ReqT> msg);
+    void changePeerState_(const std::string &id,
+                          const int64_t &incomingVersion,
+                          const PBMemberState &targetState,
+                          const std::string &context);
 
     std::string                         logContext_;
     folly::EventBase                    *eb_;
@@ -299,6 +304,7 @@ struct PBMember {
     std::string                         leaderId_;
     uint32_t                            quorum_;
     PBMemberState                       state_ {PBMemberState::UNINITIALIZED};
+    int64_t                             version_;
 
     /* TermId is the version # of groupKey_ in config db.  We don't have a
      * seperate key as groupKey_ version # is sufficient and configdb will

@@ -14,8 +14,14 @@ folly::Future<std::unique_ptr<RespT>> PBMember::groupWriteInEb_(F &&localWriteFu
     if (!isLeaderState()) {
         CLog(WARNING) << "Attempt to write when not a leader.  Current state:"
             << _PBMemberState_VALUES_TO_NAMES.at(state_);
-        throw StatusException(Status::STATUS_INVALID_STATE);
+        return folly::makeFuture<std::unique_ptr<RespT>>(
+            StatusException(Status::STATUS_INVALID_STATE));
+    } else if (state_ != PBMemberState::LEADER_FUNCTIONAL) {
+        CLog(WARNING) << "Attempt to write when there is no quorum";
+        return folly::makeFuture<std::unique_ptr<RespT>>(
+            StatusException(Status::STATUS_NO_QUORUM));
     }
+
     msg->opId = ++(leaderCtx_->opId);
     msg->commitId = ++(leaderCtx_->commitId);
     auto payload = serializeToBinary(*msg);

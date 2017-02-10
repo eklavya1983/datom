@@ -27,6 +27,11 @@
 #include <volumeserver/VolumeHandleIf.h>
 #include <volumeserver/VolumeMetaDb.h>
 
+template <>
+const char* typeStr<infra::PullJournalEntriesMsg>() {
+    return "PullJournalEntriesMsg";
+}
+
 namespace volume {
 
 
@@ -78,6 +83,9 @@ void VolumeReplica::runSyncProtocol()
           // TODO(Rao): Complete sync operation
           switchState_(PBMemberState::FOLLOWER_FUNCTIONAL, "Sync completed");
           notifyLeader_();
+    })
+    .onError([this](const folly::exception_wrapper &ew) {
+        CHECK(false) << "Not implemented";
     });
 }
 
@@ -88,6 +96,7 @@ VolumeReplica::notifyLeader_()
     msg.resourceId = resourceId_;
     msg.termId = termId_;
     msg.memberId =  myId_;
+    msg.memberVersion = version_;
     msg.memberState = state_;
 
     return sendKVBMessage<AddToGroupMsg, AddToGroupRespMsg>(
@@ -119,7 +128,6 @@ void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,
     // TODO(rao): set lease time
 
     CVLog(LREPLICATION) << toJsonString(msg);
-#if 0
     auto f = sendKVBMessage<PullJournalEntriesMsg, PullJournalEntriesRespMsg>(
         provider_->getConnectionCache(),
         leaderId_,
@@ -132,7 +140,6 @@ void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,
     .onError([promise](folly::exception_wrapper ew){
         promise->setException(ew);
     });
-#endif
 }
 
 void VolumeReplica::applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg)

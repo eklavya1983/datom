@@ -17,6 +17,12 @@
 #include <infra/MessageUtils.tcc>
 #include <infra/ConnectionCache.tcc>
 
+#define THROW_IFNOT_LEADER() \
+    if (!isLeaderState() || !leaderCtx_) { \
+        CLog(WARNING) << "Member isn't a leader"; \
+        throw StatusException(Status::STATUS_NOT_LEADER); \
+    }
+
 
 template <>
 const char* typeStr<infra::GetMemberStateMsg>() {
@@ -70,6 +76,7 @@ PBMember::PBMember(const std::string &logCtx,
     myId_(myId),
     quorum_(quorum)
 {
+    DCHECK(quorum_ > 0);
     termId_ = commontypes_constants::INVALID_VALUE();
     commitId_ = commontypes_constants::INVALID_VALUE();
 }
@@ -211,7 +218,7 @@ void PBMember::handleBecomeLeaderMsg(std::unique_ptr<BecomeLeaderMsg> req)
                     peer.state = itr->state;
                     peer.version = itr->version;
                 } else {
-                    peer.state = PBMemberState::UNINITIALIZED;
+                    peer.state = PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP;
                     peer.version = commontypes_constants::INVALID_VERSION();
                 }
                 leaderCtx_->peers.push_back(peer);
@@ -282,8 +289,14 @@ PBMember::handleAddToGroupMsg(std::unique_ptr<AddToGroupMsg> req)
 {
     return via(eb_).then([this, req=std::move(req)]() {
         throwIfInvalidTerm_(req->termId);
-        // TODO(Rao): Implement
+        THROW_IFNOT_LEADER();
+        changePeerState_(req->memberId,
+                         req->memberVersion,
+                         req->memberState,
+                         "add to group request");
+        /* Make group level changes if any required */
         auto resp = std::make_unique<AddToGroupRespMsg>();
+        resp->syncCommitId = commitId_;
         return resp;
     });
 }
@@ -348,7 +361,6 @@ void PBMember::watchCb_(const std::string &key)
 
 void PBMember::switchState_(PBMemberState newState, const std::string &ctx)
 {
-    // TODO(Rao) : Log
     CLog(INFO) << "switch state [" << _PBMemberState_VALUES_TO_NAMES.at(state_)
         << "->" << _PBMemberState_VALUES_TO_NAMES.at(newState) << "]"
         << " - " << ctx;
@@ -515,6 +527,90 @@ std::vector<PBMember::LeaderCtx::PeerInfo> PBMember::getWritablePeers_()
     return peers;
 }
 
+
+void PBMember::changePeerState_(const std::string &id,
+                                const int64_t &incomingVersion,
+                                const PBMemberState &targetState,
+                                const std::string &context)
+{
+    auto member = getPeerRef_(id);
+    if (!member) {
+        CLog(WARNING) << "Unable to change peer state. Peer with id:" << id
+            << " isn't a member. context:" << context;
+        return;
+    }
+    auto currentState = member->state;
+    auto currentVersion = member->version;
+    bool stateChanged = false;
+
+    /* Adjust member state */
+    if (targetState == PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP) {
+        if ((currentState == PBMemberState::FOLLOWER_SYNCING ||
+            currentState == PBMemberState::FOLLOWER_FUNCTIONAL) 
+            && incomingVersion >= currentVersion) {
+            member->state = targetState;
+            member->version = incomingVersion;
+            stateChanged = true;
+        }
+    } else if (targetState == PBMemberState::FOLLOWER_SYNCING) {
+        if ((currentVersion == incomingVersion &&
+             currentState == PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP) ||
+            incomingVersion > currentVersion) {
+            member->state = targetState;
+            member->version = incomingVersion;
+            stateChanged = true;
+        }
+    } else if (targetState == PBMemberState::FOLLOWER_FUNCTIONAL) {
+        if ((currentVersion == incomingVersion &&
+             (currentState == PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP ||
+              currentState == PBMemberState::FOLLOWER_SYNCING)) ||
+            incomingVersion > currentVersion) {
+            member->state = targetState;
+            member->version = incomingVersion;
+            stateChanged = true;
+        }
+    }
+
+    if (stateChanged) {
+        CLog(INFO) << "member:" << id
+            << " state changed from state:" << _PBMemberState_VALUES_TO_NAMES.at(currentState)
+            << " version:" << currentVersion
+            << " to state:"  << _PBMemberState_VALUES_TO_NAMES.at(targetState)
+            << " version:" << incomingVersion;
+    } else {
+        CVLog(LCONFIG) << "member:" << id
+            << " state change IGNORED from state:" << _PBMemberState_VALUES_TO_NAMES.at(currentState)
+            << " version:" << currentVersion
+            << " to state:"  << _PBMemberState_VALUES_TO_NAMES.at(targetState)
+            << " version:" << incomingVersion;
+    }
+
+    uint32_t nFunctional = 0;
+    uint32_t nSyncing = 0;
+    uint32_t nNonFunctional = 0;
+    std::for_each(leaderCtx_->peers.begin(),
+                  leaderCtx_->peers.end(),
+                  [&nFunctional, &nSyncing, &nNonFunctional](const LeaderCtx::PeerInfo &p) {
+                      if (p.state == PBMemberState::FOLLOWER_FUNCTIONAL) {
+                          nFunctional++;
+                      } else if (p.state == PBMemberState::FOLLOWER_SYNCING) {
+                          nSyncing++;
+                      } else {
+                          nNonFunctional++;
+                      }
+                  });
+    /* Adjust group/leader state */
+    // TODO(Rao): Publish groupstate change to configdb
+    if (state_ == PBMemberState::LEADER_FUNCTIONAL && nFunctional < quorum_-1) {
+        switchState_(PBMemberState::LEADER_WAITING_FOR_QUORUM, "change peer state");
+    } else if (state_ == PBMemberState::LEADER_WAITING_FOR_QUORUM && nFunctional >= quorum_-1) {
+        switchState_(PBMemberState::LEADER_FUNCTIONAL, "change peer state");
+    }
+
+    DCHECK((nFunctional+nNonFunctional+nSyncing) == leaderCtx_->peers.size());
+    DCHECK(nFunctional < quorum_-1 || state_ == PBMemberState::LEADER_FUNCTIONAL);
+}
+
 folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
                                                   std::unique_ptr<folly::IOBuf> buffer) {
     struct WriteCtx {
@@ -523,6 +619,8 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
         uint32_t nSuccess {0};
         uint32_t nPeers;
     };
+
+    DCHECK(state_ == PBMemberState::LEADER_FUNCTIONAL); 
 
     auto connMgr = provider_->getConnectionCache();
     auto peers = getWritablePeers_();
@@ -558,7 +656,7 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
                       CVLog(LIO) << "Received KVBinary type:" << getType(respTry.value())
                           << " from:" << peerPrior.id;
                       writeCtx->nSuccess++;
-                      if (writeCtx->nSuccess == quorum_ -1 &&
+                      if (writeCtx->nSuccess == quorum_-1 &&
                           !writeCtx->promise.isFulfilled()) {
                           writeCtx->promise.setValue(folly::Unit());
                       }
@@ -566,11 +664,11 @@ folly::Future<folly::Unit> PBMember::writeToPeers(const std::string &type,
                       CVLog(LIO) << "Received KVBinary exception:"
                           << respTry.exception().what()
                           << " from:" << peerPrior.id;
-                      if ((peer->state == PBMemberState::FOLLOWER_FUNCTIONAL ||
-                           peer->state == PBMemberState::FOLLOWER_SYNCING) &&
-                          peer->version == peerPrior.version) {
-                          peer->state = PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP;
-                      }
+                      changePeerState_(peer->id,
+                                       peerPrior.version,
+                                       PBMemberState::FOLLOWER_WAIT_TO_JOIN_GROUP,
+                                       folly::sformat("write failed exception:{}",
+                                                      respTry.exception().what()));
                       if (writeCtx->nAcked == writeCtx->nPeers &&
                           !writeCtx->promise.isFulfilled()) {
                           writeCtx->promise.setException(respTry.exception());
