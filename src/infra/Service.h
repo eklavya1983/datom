@@ -63,6 +63,7 @@ struct Service : ModuleProvider {
     CoordinationClient* getCoordinationClient() const override;
     ConnectionCache* getConnectionCache() const override;
     folly::EventBase* getEventBaseFromPool() override;
+    std::shared_ptr<ServiceApiHandler> getServiceApiHandler() override;
 
     template <class T>
     std::shared_ptr<T> getHandler() const {

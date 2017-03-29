@@ -8,6 +8,12 @@
 #include <infra/gen/gen-cpp2/pbapi_types.h>
 #include <infra/TimeUtil.h>
 
+#define THROW_IFNOT_LEADER() \
+    if (!isLeaderState() || !leaderCtx_) { \
+        CLog(WARNING) << "Member isn't a leader"; \
+        throw StatusException(Status::STATUS_NOT_LEADER); \
+    }
+
 namespace folly {
 class EventBase;
 }

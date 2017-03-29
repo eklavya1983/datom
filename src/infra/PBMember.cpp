@@ -17,13 +17,6 @@
 #include <infra/MessageUtils.tcc>
 #include <infra/ConnectionCache.tcc>
 
-#define THROW_IFNOT_LEADER() \
-    if (!isLeaderState() || !leaderCtx_) { \
-        CLog(WARNING) << "Member isn't a leader"; \
-        throw StatusException(Status::STATUS_NOT_LEADER); \
-    }
-
-
 template <>
 const char* typeStr<infra::GetMemberStateMsg>() {
     return "GetMemberStateMsg";

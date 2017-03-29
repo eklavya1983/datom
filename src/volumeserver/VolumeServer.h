@@ -26,6 +26,10 @@ class UpdateBlobMsg;
 class UpdateBlobMetaRespMsg;
 class UpdateBlobMetaMsg;
 
+struct SyncCtx {
+    Journal             activeIoJournal_;
+};
+
 struct VolumeReplica : PBMember, VolumeHandleIf {
     using ResourceInfoType = VolumeInfo;
 
@@ -37,7 +41,6 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
                   const VolumeInfo &volumeInfo);
 
     /* Overrides from PBMember */
-    void runSyncProtocol() override;
 
     void applyResourceUpdate(const KVBuffer &kvb);
 
@@ -52,15 +55,23 @@ struct VolumeReplica : PBMember, VolumeHandleIf {
     template<class ReqT, class RespT>
     folly::Future<std::unique_ptr<RespT>> handleMetadataWrite(std::unique_ptr<ReqT> msg,
                                                               std::unique_ptr<folly::IOBuf> buffer);
+    
+    /* Sync related messages */
+    void runSyncProtocol() override;
+    folly::Future<std::unique_ptr<PullJournalEntriesRespMsg>>
+        handlePullJournalEntriesMsg(std::unique_ptr<PullJournalEntriesMsg> msg);
+    folly::Future<std::vector<std::unique_ptr<KVBuffer>>>
+        applyOpBatch(std::vector<JournalEntry> &entries);
+
  protected:
     folly::Future<std::unique_ptr<AddToGroupRespMsg>> notifyLeader_();
     void pullJournalEntries_(const int64_t &pullEndCommitId,
                              const std::shared_ptr<VoidPromise> &promise);
-    void applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg);
     folly::Future<folly::Unit> applyBufferedJournalEntries_();
 
     VolumeMetaDb                db_;
     Journal                     journal_;
+    std::unique_ptr<SyncCtx>    syncCtx_;
 };
 
 #if 0

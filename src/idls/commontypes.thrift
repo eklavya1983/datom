@@ -1,6 +1,8 @@
 namespace cpp infra 
 namespace java infra.gen
 
+typedef string MsgId
+
 /* For testing */
 struct PingMsg {
 }
@@ -69,3 +71,9 @@ struct Properties {
 typedef binary ChunkId
 const i32 CHUNKID_SIZE = 20
 const i32 MAX_PAYLOAD_BYTES = 2097152 
+
+struct JournalEntry {
+    1: MsgId			msgId;
+    2: i64 			entryId;
+    3: InfraBuffer		buffer;
+}

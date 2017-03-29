@@ -200,6 +200,11 @@ folly::EventBase* Service::getEventBaseFromPool()
     return ioThreadpool_->getEventBase();
 }
 
+std::shared_ptr<ServiceApiHandler> Service::getServiceApiHandler()
+{
+    return getHandler<ServiceApiHandler>();
+}
+
 void Service::initCoordinationClient_()
 {
     /* Connect with zookeeper */

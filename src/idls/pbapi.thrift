@@ -1,3 +1,5 @@
+include "commontypes.thrift"
+
 namespace cpp infra 
 
 const string PB_LOCK_KEY="LOCK"
@@ -152,12 +154,12 @@ struct AddToGroupRespMsg {
 struct PullJournalEntriesMsg {
     1: i64		resourceId;
     2: i32		termId;
-    4: i64  		fromId;
-    5: i64 		toId;
-    /* Maximum bytes to pack in the response.  NOTE: It should >= maximum size of a journal entry */
-    6: i64 		maxBytesInResp;
+    3: i64  		fromId;
+    4: i64 		toId;
+    /* Maximum bytes to pack in the response.  NOTE: It should be >= maximum size of a journal entry */
+    5: i64 		maxBytesInResp;
     /* When set, joural entries [fromId, toId] will be locked for specified seconds */
-    7: i32 		lockTimeInSec;
+    6: i32 		lockTimeInSec;
 }
 
 /**
@@ -166,6 +168,6 @@ struct PullJournalEntriesMsg {
 struct PullJournalEntriesRespMsg {
     1: i64  		fromId;
     2: i64 		toId;
-    3: list<binary> 	journalEntries;
+    3: list<commontypes.JournalEntry> journalEntries;
 }
 

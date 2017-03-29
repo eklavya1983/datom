@@ -32,6 +32,10 @@ template <>
 const char* typeStr<infra::PullJournalEntriesMsg>() {
     return "PullJournalEntriesMsg";
 }
+template <>
+const char* typeStr<infra::PullJournalEntriesRespMsg>() {
+    return "PullJournalEntriesRespMsg";
+}
 
 namespace volume {
 
@@ -81,13 +85,27 @@ void VolumeReplica::runSyncProtocol()
         return applyBufferedJournalEntries_();
     })
     .then([this]() {
-          // TODO(Rao): Complete sync operation
-          switchState_(PBMemberState::FOLLOWER_FUNCTIONAL, "Sync completed");
-          notifyLeader_();
+        // TODO(Rao): Complete sync operation
+        switchState_(PBMemberState::FOLLOWER_FUNCTIONAL, "Sync completed");
+        notifyLeader_();
     })
     .onError([this](const folly::exception_wrapper &ew) {
         CHECK(false) << "Not implemented";
     });
+}
+
+folly::Future<std::unique_ptr<PullJournalEntriesRespMsg>>
+VolumeReplica::handlePullJournalEntriesMsg(std::unique_ptr<PullJournalEntriesMsg> msg)
+{
+    DCHECK(eb_->isInEventBaseThread());
+    THROW_IFNOT_LEADER();
+
+    auto resp = std::make_unique<PullJournalEntriesRespMsg>();
+    journal_.retrieveEntries(msg->fromId,
+                             msg->toId,
+                             msg->maxBytesInResp,
+                             resp->journalEntries);
+    return folly::makeFuture(std::move(resp));
 }
 
 folly::Future<std::unique_ptr<AddToGroupRespMsg>>
@@ -134,8 +152,11 @@ void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,
         leaderId_,
         msg);
     f
-    .then([this, pullEndCommitId, promise](std::unique_ptr<PullJournalEntriesRespMsg> resp) {
-        applyJournalEntries_(std::move(resp));
+    .then([this](std::unique_ptr<PullJournalEntriesRespMsg> resp) {
+        return applyOpBatch(resp->journalEntries);
+    })
+    .via(eb_)
+    .then([this, promise, pullEndCommitId]() {
         pullJournalEntries_(pullEndCommitId, promise); 
     })
     .onError([promise](folly::exception_wrapper ew){
@@ -143,10 +164,20 @@ void VolumeReplica::pullJournalEntries_(const int64_t &pullEndCommitId,
     });
 }
 
-void VolumeReplica::applyJournalEntries_(std::unique_ptr<PullJournalEntriesRespMsg> msg)
+folly::Future<std::vector<std::unique_ptr<KVBuffer>>>
+VolumeReplica::applyOpBatch(std::vector<JournalEntry> &entries)
 {
-    DCHECK(eb_->isInEventBaseThread());
-    // TODO(Rao): 
+    std::vector<folly::Future<std::unique_ptr<KVBuffer>>> futures;
+
+    auto handler = provider_->getServiceApiHandler();
+    for (auto &e: entries) {
+        auto reqKvb = std::make_unique<KVBuffer>();
+        setType(*reqKvb, e.msgId);
+        reqKvb->set_payload(std::move(e.buffer));
+        futures.push_back(
+            handler->future_handleKVBMessage(std::move(reqKvb)));
+    }
+    return folly::collect(futures);
 }
 
 folly::Future<folly::Unit> VolumeReplica::applyBufferedJournalEntries_()
@@ -237,6 +268,18 @@ void VolumeServer::registerHandlers_()
             [this](std::unique_ptr<GroupInfoUpdateMsg> req) {
                 auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
                 replica->handleGroupInfoUpdateMsg(std::move(req));
+            })
+        );
+
+    handler->registerKVBMessageHandler(
+        typeStr<PullJournalEntriesMsg>(),
+        KVBHandler<PullJournalEntriesMsg, PullJournalEntriesRespMsg>(
+            [this](std::unique_ptr<PullJournalEntriesMsg> req) {
+                auto replica = replicaMgr_->getResourceOrThrow(req->resourceId);
+                return via(replica->getEventBase())
+                .then([replica, req=std::move(req)]() mutable {
+                    return replica->handlePullJournalEntriesMsg(std::move(req));
+                });
             })
         );
 
